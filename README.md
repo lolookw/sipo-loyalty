@@ -4,7 +4,7 @@ A production-ready loyalty platform for cafés: branded public pages, customer r
 
 Sipo turns a café's loyalty program into a simple digital flow: customers verify by email, collect stamps or points, cashiers manage purchases from a focused POS-style screen, and owners customize the café experience without touching code.
 
-> Built as a real product-style portfolio project: multi-tenant routing, role-based access, OTP verification, transactional loyalty logic, image uploads, and a public demo.
+> Built around production concerns: multi-tenant routing, role-based access, OTP verification, transactional loyalty logic, image uploads, and tenant-safe admin workflows.
 
 ---
 
@@ -21,20 +21,17 @@ The goal is not just to show screens. It shows how a small business product hand
 
 ---
 
-## Demo paths
+## Main app areas
 
-| Path | Use it for |
+| Area | What it does |
 | --- | --- |
-| `/demo` | Product demo overview with app screenshots |
-| `/cafedemo` | Public café page |
-| `/cafedemo/loyalty` | Customer loyalty flow |
-| `/login` | Café owner/staff login |
-| `/dashboard` | Cashier/barista operating panel |
-| `/dashboard/settings` | Café branding, links, staff, and loyalty configuration |
-| `/dashboard/rewards` | Points rewards management |
-| `/dashboard/customers` | Registered customer list |
-
-Local seed credentials are listed below for development only.
+| Public café page | Branded landing page for each café, available under its own slug |
+| Customer loyalty page | Email verification, registration, stamps, points, and available rewards |
+| Owner/staff login | Role-aware access for café teams |
+| Cashier dashboard | Fast customer search, stamp updates, purchases, and redemptions |
+| Settings dashboard | Café branding, links, staff users, and loyalty configuration |
+| Rewards dashboard | Create and manage point-based rewards |
+| Customers dashboard | Review registered customers, stamps, points, and spend |
 
 ---
 
@@ -83,7 +80,6 @@ Local seed credentials are listed below for development only.
 - **Tenant-safe uploads:** uploads check café ownership/staff access before using Supabase storage.
 - **Transactional rewards:** stamp and point operations use guarded Prisma transactions to avoid double-spend and race conditions.
 - **Configurable loyalty rules:** each café controls its own stamps, points, rewards, minimum purchase, and branding.
-- **Public-demo friendly:** the seeded café is a demo café, not a real customer account.
 
 ---
 
@@ -132,12 +128,6 @@ SUPABASE_URL="https://your-project.supabase.co"
 SUPABASE_SERVICE_ROLE_KEY="replace-with-service-role-key"
 ```
 
-For local-only demo setup via `scripts/setup-demo-cafe.ts`, also set:
-
-```env
-DEMO_OWNER_PASSWORD="replace-with-a-local-demo-password"
-```
-
 ### 3. Set up the database
 
 ```bash
@@ -145,15 +135,9 @@ npm run db:push
 npm run db:seed
 ```
 
-`db:seed` creates a local demo café.
+`db:seed` creates local sample data for development.
 
-Development credentials after seeding:
-
-```txt
-demo@sipo.ar / sipoDemo25
-```
-
-Do not reuse that password in production.
+The seed is meant for local development only. Do not reuse seeded credentials in production.
 
 ### 4. Run the app
 
@@ -175,7 +159,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run lint` | Run ESLint |
 | `npm run typecheck` | Run TypeScript without emitting files |
 | `npm run db:push` | Push Prisma schema to the database |
-| `npm run db:seed` | Seed local demo café |
+| `npm run db:seed` | Seed local sample data |
 | `npm run db:studio` | Open Prisma Studio |
 
 ---
@@ -233,4 +217,4 @@ Important safeguards implemented in the app:
 
 ## Project status
 
-This is a portfolio/public demo project based on a real product direction. It is suitable for review, experimentation, and deployment with your own environment variables.
+This repository is public so the codebase can be reviewed as part of a portfolio. The application itself is product-oriented and can be deployed with your own environment variables.
