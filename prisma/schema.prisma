@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Cafe {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  logoUrl     String?
+  coverUrl    String?
+  primaryColor String  @default("#6F4E37")
+  accentColor  String  @default("#D4A96A")
+  fontFamily   String  @default("serif")
+
+  // Social/Link buttons
+  menuUrl      String?
+  mapsUrl      String?
+  instagramUrl String?
+  whatsappUrl  String?
+  websiteUrl   String?
+  customLinks  String? // JSON array of {label, url, icon}
+
+  // Loyalty config
+  loyaltyEnabled    Boolean @default(true)
+  stampEnabled      Boolean @default(true)
+  stampsRequired    Int     @default(10)
+  stampReward       String  @default("1 free coffee")
+  pointsEnabled     Boolean @default(true)
+  pointsPerPeso     Float   @default(1.0)   // points per currency unit
+  currencySymbol    String  @default("$")
+  minPurchaseForStamp Float @default(0)     // 0 = no minimum
+
+  owner    Owner    @relation(fields: [ownerId], references: [id])
+  ownerId  String
+
+  customers CustomerCafe[]
+  rewards   Reward[]
+  transactions Transaction[]
+  staff     CafeStaff[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Owner {
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  password           String
+  name               String
+  mustChangePassword Boolean  @default(false)
+  cafes              Cafe[]
+  createdAt          DateTime @default(now())
+}
+
+model CafeStaff {
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  password           String
+  name               String
+  role               String   @default("cashier")
+  cafe               Cafe     @relation(fields: [cafeId], references: [id])
+  cafeId             String
+  mustChangePassword Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  @@index([cafeId])
+}
+
+model Customer {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  name           String
+  phone          String?
+  birthdate      DateTime?
+  favoriteDrink  String?
+  createdAt      DateTime  @default(now())
+
+  cafes        CustomerCafe[]
+  transactions Transaction[]
+}
+
+model CustomerOtp {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+model CustomerCafe {
+  id         String   @id @default(cuid())
+  customer   Customer @relation(fields: [customerId], references: [id])
+  customerId String
+  cafe       Cafe     @relation(fields: [cafeId], references: [id])
+  cafeId     String
+
+  stamps     Int      @default(0)
+  totalStamps Int     @default(0) // lifetime stamps (never resets)
+  points     Float    @default(0)
+  totalSpent Float    @default(0)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([customerId, cafeId])
+  @@index([cafeId])
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  cafe        Cafe     @relation(fields: [cafeId], references: [id])
+  cafeId      String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  customerId  String
+
+  type        String   // "stamp_add" | "stamp_redeem" | "points_add" | "points_redeem"
+  amount      Float?   // purchase amount (for points)
+  stamps      Int?     // stamps added/used
+  points      Float?   // points added/used
+  note        String?  // e.g. reward name redeemed
+
+  createdAt   DateTime @default(now())
+
+  @@index([cafeId])
+  @@index([cafeId, createdAt])
+  @@index([customerId])
+}
+
+model Reward {
+  id          String   @id @default(cuid())
+  cafe        Cafe     @relation(fields: [cafeId], references: [id])
+  cafeId      String
+  name        String
+  description String?
+  pointsCost  Float
+  active      Boolean  @default(true)
+  emoji       String?  @default("🎁")
+  createdAt   DateTime @default(now())
+
+  @@index([cafeId])
+}

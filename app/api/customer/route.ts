@@ -1,0 +1,80 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { getCafeIfAuthorized } from '@/lib/cafeAuth'
+
+export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const email  = req.nextUrl.searchParams.get('email')
+  const search = req.nextUrl.searchParams.get('search')
+  const cafeId = req.nextUrl.searchParams.get('cafeId')
+  if (!cafeId) return NextResponse.json({ error: 'Missing cafeId' }, { status: 400 })
+
+  const cafe = await getCafeIfAuthorized(cafeId, session)
+  if (!cafe) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // ── Autocomplete: ?search=xxx&cafeId=xxx ──────────────────────────────────
+  if (search) {
+    const q = search.trim().toLowerCase()
+    if (q.length < 2) return NextResponse.json([])
+
+    const customers = await prisma.customer.findMany({
+      where: {
+        cafes: { some: { cafeId } },
+        OR: [
+          { email: { startsWith: q } },
+          { name: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      include: { cafes: { where: { cafeId } } },
+      orderBy: { name: 'asc' },
+      take: 6,
+    })
+
+    return NextResponse.json(
+      customers.map(c => ({ ...c, loyalty: c.cafes[0] || null }))
+    )
+  }
+
+  // ── Exact lookup: ?email=xxx&cafeId=xxx ───────────────────────────────────
+  if (!email) return NextResponse.json({ error: 'Missing email or search' }, { status: 400 })
+
+  const customer = await prisma.customer.findUnique({
+    where: { email: email.trim().toLowerCase() },
+    include: { cafes: { where: { cafeId } } },
+  })
+
+  if (!customer) return NextResponse.json(null)
+
+  return NextResponse.json({ ...customer, loyalty: customer.cafes[0] || null })
+}
+
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { email, name, cafeId } = await req.json()
+  if (!email || !name || !cafeId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+
+  const cafe = await getCafeIfAuthorized(cafeId, session)
+  if (!cafe) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const normalizedEmail = email.trim().toLowerCase()
+
+  const customer = await prisma.customer.upsert({
+    where: { email: normalizedEmail },
+    update: { name },
+    create: { email: normalizedEmail, name },
+  })
+
+  const link = await prisma.customerCafe.upsert({
+    where: { customerId_cafeId: { customerId: customer.id, cafeId } },
+    update: {},
+    create: { customerId: customer.id, cafeId },
+  })
+
+  return NextResponse.json({ ...customer, loyalty: link })
+}

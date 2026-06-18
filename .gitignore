@@ -1,0 +1,13 @@
+.env
+.env.local
+node_modules/
+.next/
+prisma/dev.db
+prisma/dev.db-journal
+
+# local tooling
+.claude/
+*.tsbuildinfo
+.mcp.json
+.vercel/
+.env.*

@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Sipo Design Tokens ─────────────────────────────────── */
+:root {
+  --sipo-espresso:     #43352C;
+  --sipo-crema:        #F6F0E8;
+  --sipo-arena:        #D9C7B2;
+  --sipo-terracota:    #B56A4C;
+  --sipo-salvia:       #66725F;
+  --sipo-carbon:       #171717;
+  --sipo-gris-calido:  #6B6B6B;
+  --sipo-blanco-suave: #FCFBF8;
+
+  /* Semantic tokens */
+  --color-bg:          #FCFBF8;
+  --color-surface:     #FFFFFF;
+  --color-border:      #E8DECE;
+  --color-text:        #43352C;
+  --color-muted:       #6B6B6B;
+  --color-faint:       #C0B4A8;
+  --color-accent:      #B56A4C;
+  --color-btn-primary: #43352C;
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D9C7B2; border-radius: 99px; }
+}
+
+@keyframes stamp-pop {
+  0%   { transform: scale(0.5) rotate(-15deg); opacity: 0; }
+  70%  { transform: scale(1.2) rotate(3deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+.stamp-pop {
+  animation: stamp-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
