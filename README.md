@@ -1,65 +1,161 @@
-# ☕ CaféLoyalty
+# Sipo Loyalty
 
-A white-label loyalty + linktree platform for cafés. Each café gets a beautiful public page with links and a full loyalty program (stamp cards + points system), managed through a dedicated owner dashboard.
+A production-ready loyalty platform for cafés: branded public pages, customer rewards, cashier tools, and an owner dashboard in one multi-tenant app.
 
----
+Sipo turns a café's loyalty program into a simple digital flow: customers verify by email, collect stamps or points, cashiers manage purchases from a focused POS-style screen, and owners customize the café experience without touching code.
 
-## Features
-
-### Customer-facing (`/[cafeSlug]`)
-- Beautiful linktree-style landing page with café branding
-- Buttons: Menu, Google Maps, Instagram, WhatsApp, custom links
-- "Programa de beneficios" CTA that opens the loyalty page
-
-### Loyalty page (`/[cafeSlug]/loyalty`)
-- Phone-based login (no password needed for customers)
-- **Stamp card**: visual grid, adds one per coffee, auto-resets when complete
-- **Points system**: enter purchase amount → earn points → redeem rewards
-- Fully reflects the café's custom colors and config
-
-### Owner Dashboard (`/dashboard`)
-- **Barista panel**: search customer by phone → add stamps or process purchases → redeem rewards — all in one screen
-- **Settings**: customize name, description, logo, cover image, brand colors, all links, loyalty rules
-- **Rewards**: create/edit/delete/toggle point rewards with emoji picker
-- **Customers**: full table of registered customers with stamps, points, and total spent
+> Built as a real product-style portfolio project: multi-tenant routing, role-based access, OTP verification, transactional loyalty logic, image uploads, and a public demo.
 
 ---
 
-## Tech Stack
+## Why this project matters
 
-- **Next.js 14** (App Router)
-- **Prisma** + **SQLite** (dev) / PostgreSQL (prod)
-- **NextAuth.js** (JWT sessions, owner login)
-- **Tailwind CSS** + **Framer Motion**
-- **react-hot-toast** for notifications
+Most small cafés still run loyalty programs with paper cards, spreadsheets, or disconnected tools. Sipo brings the whole flow into one branded web app:
+
+- customers get a mobile-first page for the café and their rewards;
+- baristas can add stamps, purchases, and redemptions quickly;
+- owners can manage branding, links, staff, rewards, and loyalty rules;
+- each café has its own public URL and isolated data.
+
+The goal is not just to show screens. It shows how a small business product handles auth, tenant boundaries, validation, transactions, and deployment concerns.
 
 ---
 
-## Getting Started
+## Demo paths
 
-### 1. Clone & install
+| Path | Use it for |
+| --- | --- |
+| `/demo` | Product demo overview with app screenshots |
+| `/cafedemo` | Public café page |
+| `/cafedemo/loyalty` | Customer loyalty flow |
+| `/login` | Café owner/staff login |
+| `/dashboard` | Cashier/barista operating panel |
+| `/dashboard/settings` | Café branding, links, staff, and loyalty configuration |
+| `/dashboard/rewards` | Points rewards management |
+| `/dashboard/customers` | Registered customer list |
+
+Local seed credentials are listed below for development only.
+
+---
+
+## What users can do
+
+### Customers
+
+- Open a café-specific landing page.
+- Access menu, maps, Instagram, WhatsApp, website, and custom links.
+- Verify their email with an OTP code.
+- Register for the café loyalty program.
+- View current stamps, lifetime stamps, points, and rewards.
+
+### Baristas / cashiers
+
+- Search customers by email or phone.
+- Add a stamp after a valid purchase.
+- Register purchase amounts to award points.
+- Redeem completed stamp cards.
+- Redeem point-based rewards.
+- See recent activity from the cashier screen.
+
+### Café owners
+
+- Customize café name, description, logo, cover image, and colors.
+- Configure public links and custom buttons.
+- Enable/disable stamp and points programs.
+- Set stamps required, stamp reward, points ratio, currency, and minimum purchase for stamps.
+- Create and manage staff users.
+- Create, edit, disable, and delete rewards.
+- Review customers, points, stamps, and total spend.
+
+### Super admin
+
+- Create cafés and owner accounts.
+- Manage existing café records.
+- Access café dashboards when needed for administration.
+
+---
+
+## Product details worth reviewing
+
+- **Multi-tenant routing:** café pages live under `/:cafeSlug`.
+- **Role-aware auth:** super admin, owner, and cashier access paths are separated.
+- **OTP customer verification:** public customer registration requires OTP proof.
+- **Tenant-safe uploads:** uploads check café ownership/staff access before using Supabase storage.
+- **Transactional rewards:** stamp and point operations use guarded Prisma transactions to avoid double-spend and race conditions.
+- **Configurable loyalty rules:** each café controls its own stamps, points, rewards, minimum purchase, and branding.
+- **Public-demo friendly:** the seeded café is a demo café, not a real customer account.
+
+---
+
+## Tech stack
+
+| Area | Stack |
+| --- | --- |
+| Framework | Next.js 15 App Router |
+| UI | React 18, Tailwind CSS, Framer Motion |
+| Auth | NextAuth.js JWT sessions |
+| Database | Prisma + PostgreSQL |
+| Email OTP | Resend |
+| Uploads | Supabase Storage |
+| Validation/tooling | TypeScript, ESLint, npm audit |
+| Deployment target | Vercel |
+
+---
+
+## Local development
+
+### 1. Clone and install
 
 ```bash
-git clone <your-repo>
-cd cafe-loyalty
+git clone https://github.com/lolookw/sipo-loyalty.git
+cd sipo-loyalty
 npm install
 ```
 
-### 2. Set up environment
+### 2. Create `.env`
 
-```bash
-cp .env.example .env
-# Edit .env and set a strong NEXTAUTH_SECRET
+```env
+DATABASE_URL="postgresql://user:password@host:5432/cafeloyalty"
+NEXTAUTH_SECRET="replace-with-a-strong-secret"
+NEXTAUTH_URL="http://localhost:3000"
+
+# Super admin login
+SUPER_ADMIN_EMAIL="admin@example.com"
+SUPER_ADMIN_PASSWORD="replace-with-a-strong-password"
+
+# Customer OTP emails
+RESEND_API_KEY="replace-with-resend-api-key"
+RESEND_FROM_EMAIL="Sipo <hello@example.com>"
+
+# Image uploads
+SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="replace-with-service-role-key"
 ```
 
-### 3. Set up database
+For local-only demo setup via `scripts/setup-demo-cafe.ts`, also set:
 
-```bash
-npm run db:push    # creates SQLite DB and applies schema
-npm run db:seed    # creates a local dev demo café — dev only, never run in production
+```env
+DEMO_OWNER_PASSWORD="replace-with-a-local-demo-password"
 ```
 
-### 4. Run dev server
+### 3. Set up the database
+
+```bash
+npm run db:push
+npm run db:seed
+```
+
+`db:seed` creates a local demo café.
+
+Development credentials after seeding:
+
+```txt
+demo@sipo.ar / sipoDemo25
+```
+
+Do not reuse that password in production.
+
+### 4. Run the app
 
 ```bash
 npm run dev
@@ -67,67 +163,74 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### 5. Try it out
+---
 
-| URL | What it is |
-|-----|-----------|
-| `/cafedemo` | Customer-facing page for demo café |
-| `/cafedemo/loyalty` | Loyalty program (enter any email to register) |
-| `/login` | Owner dashboard login |
-| `/dashboard` | Barista panel |
-| `/dashboard/settings` | Café configuration |
-| `/dashboard/rewards` | Points rewards management |
-| `/dashboard/customers` | Customer list |
+## Useful scripts
 
-**Local dev credentials** after `db:seed`: `demo@sipo.ar` / `sipoDemo25`. Do not reuse this password in production.
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start local development server |
+| `npm run build` | Create production build |
+| `npm run start` | Run production server after build |
+| `npm run lint` | Run ESLint |
+| `npm run typecheck` | Run TypeScript without emitting files |
+| `npm run db:push` | Push Prisma schema to the database |
+| `npm run db:seed` | Seed local demo café |
+| `npm run db:studio` | Open Prisma Studio |
 
 ---
 
-## Adding a New Café
+## Deployment notes
 
-1. Log in as an owner
-2. Run a seed or create via Prisma Studio (`npm run db:studio`)
-3. Or build a registration flow for new café owners
+The app is designed for Vercel.
 
----
+Required production environment variables:
 
-## Production Deployment
-
-### Switch to PostgreSQL
-
-Update `.env`:
-```
-DATABASE_URL="postgresql://user:password@host:5432/cafeloyalty"
-```
-
-Update `prisma/schema.prisma`:
-```prisma
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-```
-
-Then: `npm run db:push`
-
-### Deploy to Vercel
-
-```bash
-vercel
-```
-
-Add environment variables in Vercel dashboard:
 - `DATABASE_URL`
 - `NEXTAUTH_SECRET`
-- `NEXTAUTH_URL` (your production URL)
+- `NEXTAUTH_URL`
+- `SUPER_ADMIN_EMAIL`
+- `SUPER_ADMIN_PASSWORD`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Then deploy with your usual Vercel flow.
+
+```bash
+npm run build
+```
+
+The project uses `next/font/google`, so fonts are downloaded at build time and served from the deployment.
 
 ---
 
-## Customization Ideas
+## Security notes
 
-- Add QR code generation for each café's page
-- Add email/SMS notifications when stamps complete
-- Analytics dashboard (visits, transactions over time)
-- Multi-café support per owner
-- Tiered loyalty levels (Bronze / Silver / Gold)
-- Push notifications via PWA
+This public repo intentionally avoids committed `.env` files, local MCP config, Vercel config, and service credentials.
+
+Important safeguards implemented in the app:
+
+- no fallback secret for customer token signing;
+- OTP proof required before public customer registration;
+- role and tenant checks before café uploads and cashier access;
+- sanitized public URLs and custom links;
+- normalized emails and duplicate checks across owner/staff accounts;
+- transaction guards for stamp and points updates.
+
+---
+
+## Future improvements
+
+- Convert remaining `<img>` usages to `next/image` where it makes sense.
+- Add analytics for visits, purchases, and reward redemption.
+- Add owner onboarding/self-serve café creation.
+- Add automated tests around OTP, uploads, and transaction race cases.
+- Add PWA support for cashier/customer flows.
+
+---
+
+## Project status
+
+This is a portfolio/public demo project based on a real product direction. It is suitable for review, experimentation, and deployment with your own environment variables.
