@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomInt } from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { Resend } from 'resend'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString()
+  // randomInt es criptográficamente seguro (a diferencia de Math.random)
+  return randomInt(100000, 1000000).toString()
 }
 
 export async function POST(req: NextRequest) {

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { MapPin, Instagram, Globe, MessageCircle, Coffee, Star, Menu, ExternalLink } from 'lucide-react'
 
@@ -62,7 +63,16 @@ export default function CafeHomePage({ cafe }: { cafe: Cafe }) {
       {/* ── Background photo + gradient overlay ── */}
       {hasCover && (
         <div className="fixed inset-0 z-0">
-          <img src={cafe.coverUrl!} alt="" className="w-full h-full object-cover" />
+          <Image
+            src={cafe.coverUrl!}
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover"
+            // portadas fuera de Supabase se sirven sin optimizar (no rompen si el host no está en el allowlist)
+            unoptimized={!cafe.coverUrl!.includes('.supabase.co')}
+          />
           <div
             className="absolute inset-0"
             style={{

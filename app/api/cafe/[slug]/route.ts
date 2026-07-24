@@ -38,6 +38,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
     whatsappUrl?: string | null
     websiteUrl?: string | null
     customLinks?: string | null
+    reviewUrl?: string | null
   }
   try {
     linkFields = {
@@ -49,6 +50,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
       whatsappUrl: sanitizePublicUrl(body.whatsappUrl),
       websiteUrl: sanitizePublicUrl(body.websiteUrl),
       customLinks: sanitizeCustomLinks(body.customLinks),
+      reviewUrl: sanitizePublicUrl(body.reviewUrl),
     }
   } catch {
     return NextResponse.json({ error: 'URL inválida' }, { status: 400 })
@@ -61,6 +63,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
     (!Number.isFinite(minPurchaseForStamp) || minPurchaseForStamp < 0)
   ) {
     return NextResponse.json({ error: 'Monto mínimo inválido' }, { status: 400 })
+  }
+
+  const stampExpiryDays =
+    body.stampExpiryDays === undefined ? undefined : Math.floor(Number(body.stampExpiryDays))
+  if (
+    stampExpiryDays !== undefined &&
+    (!Number.isFinite(stampExpiryDays) || stampExpiryDays < 0 || stampExpiryDays > 365)
+  ) {
+    return NextResponse.json({ error: 'Vencimiento de sellos inválido' }, { status: 400 })
+  }
+
+  const referralRewardAmount =
+    body.referralRewardAmount === undefined ? undefined : Number(body.referralRewardAmount)
+  if (
+    referralRewardAmount !== undefined &&
+    (!Number.isFinite(referralRewardAmount) || referralRewardAmount <= 0 || referralRewardAmount > 100000)
+  ) {
+    return NextResponse.json({ error: 'Premio por referido inválido' }, { status: 400 })
+  }
+
+  const referralRewardType =
+    body.referralRewardType === undefined ? undefined : String(body.referralRewardType)
+  if (referralRewardType !== undefined && !['points', 'stamps'].includes(referralRewardType)) {
+    return NextResponse.json({ error: 'Tipo de premio por referido inválido' }, { status: 400 })
   }
 
   const updated = await prisma.cafe.update({
@@ -79,6 +105,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
       whatsappUrl: linkFields.whatsappUrl,
       websiteUrl: linkFields.websiteUrl,
       customLinks: linkFields.customLinks,
+      reviewUrl: linkFields.reviewUrl,
       loyaltyEnabled: body.loyaltyEnabled,
       stampEnabled: body.stampEnabled,
       stampsRequired: body.stampsRequired,
@@ -87,6 +114,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
       pointsPerPeso: body.pointsPerPeso,
       currencySymbol: body.currencySymbol,
       minPurchaseForStamp,
+      stampExpiryDays,
+      referralEnabled: body.referralEnabled !== undefined ? Boolean(body.referralEnabled) : undefined,
+      referralRewardType,
+      referralRewardAmount,
     },
   })
   revalidatePath(`/${slug}`)

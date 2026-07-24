@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
-import { LayoutDashboard, Settings, Users, Gift, LogOut, Coffee, ExternalLink, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Settings, Users, Gift, LogOut, Coffee, ExternalLink, ShieldCheck, BarChart3, Megaphone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -18,8 +18,10 @@ export default function AdminSidebar({ cafe, userName, isSuperAdmin }: Props) {
 
   const navItems = [
     { href: base, label: 'Inicio', icon: LayoutDashboard, exact: true },
+    { href: `${base}/analytics`, label: 'Estadísticas', icon: BarChart3 },
     { href: `${base}/customers`, label: 'Clientes', icon: Users },
     { href: `${base}/rewards`, label: 'Recompensas', icon: Gift },
+    { href: `${base}/campaigns`, label: 'Campañas', icon: Megaphone },
     { href: `${base}/settings`, label: 'Configuración', icon: Settings },
   ]
 

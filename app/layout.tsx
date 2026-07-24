@@ -54,6 +54,12 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: '/logo.svg',
+    apple: '/logo.svg',
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Sipo',
   },
   robots: {
     index: true,
@@ -63,6 +69,10 @@ export const metadata: Metadata = {
       follow: true,
     },
   },
+}
+
+export const viewport = {
+  themeColor: '#43352C',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { signCustomerToken } from '@/lib/customerToken'
+import { attachReferral, ensureReferralCode } from '@/lib/referrals'
 
 export async function POST(req: NextRequest) {
-  const { email, code, cafeId } = await req.json()
+  const { email, code, cafeId, ref } = await req.json()
   if (!email || !code || !cafeId)
     return NextResponse.json({ error: 'Faltan campos' }, { status: 400 })
 
@@ -40,6 +41,18 @@ export async function POST(req: NextRequest) {
 
   if (!customer) return NextResponse.json({ newUser: true, customerToken })
 
+  let loyalty = customer.cafes[0] || null
+  if (loyalty && !loyalty.referralCode) {
+    const refCode = await ensureReferralCode(prisma, loyalty.id)
+    if (refCode) loyalty = { ...loyalty, referralCode: refCode }
+  }
+
+  // Cliente existente pero nuevo en ESTE café: si vino con código de invitación, registrar el referido
+  if (!loyalty && typeof ref === 'string' && ref.trim()) {
+    try { await attachReferral(prisma, { cafeId, code: ref, referredCustomerId: customer.id }) }
+    catch (e) { console.error('referral attach error:', e) } // nunca bloquea el login
+  }
+
   const transactions = await prisma.transaction.findMany({
     where: { customerId: customer.id, cafeId },
     orderBy: { createdAt: 'desc' },
@@ -47,5 +60,5 @@ export async function POST(req: NextRequest) {
     select: { id: true, type: true, stamps: true, points: true, amount: true, note: true, createdAt: true },
   })
 
-  return NextResponse.json({ ...customer, loyalty: customer.cafes[0] || null, transactions, customerToken })
+  return NextResponse.json({ ...customer, loyalty, transactions, customerToken })
 }

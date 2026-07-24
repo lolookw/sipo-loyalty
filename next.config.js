@@ -1,8 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
+    // Restringido al storage de Supabase para evitar un proxy de imágenes abierto (SSRF).
+    // Las portadas de otros hosts se sirven sin optimizar vía `unoptimized` (ver componentes).
     remotePatterns: [
-      { protocol: 'https', hostname: '**' },
+      { protocol: 'https', hostname: '*.supabase.co' },
     ],
   },
   async headers() {

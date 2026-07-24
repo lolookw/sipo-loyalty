@@ -4,20 +4,43 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import CreateCafeForm from '@/components/admin/CreateCafeForm'
 import SuperAdminCafeList from '@/components/admin/SuperAdminCafeList'
+import PlatformConfigForm from '@/components/admin/PlatformConfigForm'
+import SignupRequestsList from '@/components/admin/SignupRequestsList'
 import { ShieldCheck, LogOut } from 'lucide-react'
 import SuperAdminSignOut from '@/components/admin/SuperAdminSignOut'
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const session = await getServerSession(authOptions)
   if (session?.user?.role !== 'superadmin') redirect('/admin/login')
 
-  const cafes = await prisma.cafe.findMany({
-    include: {
-      owner: { select: { name: true, email: true } },
-      _count: { select: { customers: true, staff: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
+  const sp = await searchParams
+
+  const [cafes, platformConfig, signupRequests] = await Promise.all([
+    prisma.cafe.findMany({
+      include: {
+        owner: { select: { name: true, email: true } },
+        _count: { select: { customers: true, staff: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.platformConfig.upsert({
+      where: { id: 'singleton' },
+      update: {},
+      create: { id: 'singleton' },
+    }),
+    prisma.cafeSignupRequest.findMany({
+      where: { status: 'pending' },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ])
+
+  // Prefill del formulario de nueva cafetería desde un lead (botón "Crear café")
+  const createInitial = {
+    ownerName: sp.poName,
+    ownerEmail: sp.poEmail,
+    cafeName: sp.poCafe,
+    cafeSlug: sp.poSlug,
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950">
@@ -56,10 +79,26 @@ export default async function AdminPage() {
           </div>
         </div>
 
-        {/* Nueva cafetería */}
+        {/* Solicitudes de alta (leads) */}
         <div>
+          <h2 className="text-base font-semibold text-white mb-4">
+            Solicitudes de alta <span className="text-zinc-500 font-normal">({signupRequests.length})</span>
+          </h2>
+          <SignupRequestsList
+            requests={signupRequests.map(r => ({ ...r, createdAt: r.createdAt.toISOString() }))}
+          />
+        </div>
+
+        {/* Configuración de la plataforma */}
+        <div>
+          <h2 className="text-base font-semibold text-white mb-4">Configuración de la plataforma</h2>
+          <PlatformConfigForm config={platformConfig} />
+        </div>
+
+        {/* Nueva cafetería */}
+        <div id="nueva-cafeteria">
           <h2 className="text-base font-semibold text-white mb-4">Nueva cafetería</h2>
-          <CreateCafeForm />
+          <CreateCafeForm initial={createInitial} />
         </div>
 
         {/* Lista de cafeterías */}
@@ -67,7 +106,7 @@ export default async function AdminPage() {
           <h2 className="text-base font-semibold text-white mb-4">
             Cafeterías registradas <span className="text-zinc-500 font-normal">({cafes.length})</span>
           </h2>
-          <SuperAdminCafeList cafes={cafes} />
+          <SuperAdminCafeList cafes={cafes} graceDays={platformConfig.graceDays} />
         </div>
       </div>
     </div>

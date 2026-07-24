@@ -1,7 +1,13 @@
 import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
+import { getPlatformConfig, buildContactUrl } from '@/lib/platformConfig'
 import { AdminScreenshot, BaristaScreenshot, CustomerScreenshot } from '@/components/demo/AppScreenshots'
+
+// La página lee la config de contacto de la DB → debe renderizarse por request
+// para reflejar de inmediato los cambios del superadmin (si fuera estática, Next
+// hornearía la config en build-time y no se actualizaría hasta un redeploy).
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'Sumá tu cafetería a Sipo',
@@ -32,7 +38,12 @@ const steps = [
   },
 ]
 
-export default function DemoPage() {
+export default async function DemoPage() {
+  const config = await getPlatformConfig()
+  const contactUrl = buildContactUrl(config, 'Hola, quiero sumar mi cafetería a Sipo') ?? '/sumate'
+  const contactExternal = contactUrl.startsWith('http') || contactUrl.startsWith('mailto:')
+  const igUrl = config.instagramUrl
+
   return (
     <div className="min-h-screen" style={{ background: '#FCFBF8', color: '#43352C' }}>
       <div className="mx-auto max-w-5xl px-6 py-5">
@@ -107,12 +118,13 @@ export default function DemoPage() {
           </p>
 
           <div className="flex flex-wrap gap-3">
-            <button
+            <Link
+              href="/sumate"
               className="font-sans font-semibold text-sm px-6 py-3 rounded-[14px] transition-all hover:bg-[#B56A4C] active:scale-[0.98]"
               style={{ background: '#43352C', color: '#FCFBF8' }}
             >
               Quiero sumarme
-            </button>
+            </Link>
             <a
               href="#como-funciona"
               className="font-sans font-semibold text-sm px-6 py-3 rounded-[14px] transition-all hover:bg-[#F0E9DF]"
@@ -304,12 +316,14 @@ export default function DemoPage() {
           >
             Escribinos y arrancamos. Sin contratos ni letra chica.
           </p>
-          <button
-            className="font-sans font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:opacity-85 active:scale-[0.98]"
+          <a
+            href={contactUrl}
+            {...(contactExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+            className="inline-block font-sans font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:opacity-85 active:scale-[0.98]"
             style={{ background: '#B56A4C', color: 'white' }}
           >
             Hablemos
-          </button>
+          </a>
         </section>
 
         {/* ── Footer ── */}
@@ -331,8 +345,16 @@ export default function DemoPage() {
             <p className="text-xs mt-1" style={{ color: '#6B6B6B' }}>Cada café cuenta.</p>
           </div>
           <div className="flex gap-5 text-sm" style={{ color: '#6B6B6B' }}>
-            <a href="#" className="hover:text-[#43352C] transition-colors">Instagram</a>
-            <a href="#" className="hover:text-[#43352C] transition-colors">Contacto</a>
+            {igUrl && (
+              <a href={igUrl} target="_blank" rel="noopener noreferrer" className="hover:text-[#43352C] transition-colors">Instagram</a>
+            )}
+            <a
+              href={contactUrl}
+              {...(contactExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+              className="hover:text-[#43352C] transition-colors"
+            >
+              Contacto
+            </a>
             <Link href="/login" className="hover:text-[#43352C] transition-colors">
               Iniciar sesión
             </Link>

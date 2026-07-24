@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Coffee, UserRound, Phone, Cake, Heart, Mail, QrCode, LogOut, X } from 'lucide-react'
+import { ArrowLeft, Coffee, UserRound, Phone, Cake, Heart, Mail, QrCode, LogOut, X, Star, Clock, Share2, Copy } from 'lucide-react'
 import dynamic from 'next/dynamic'
 const QRCodeSVG = dynamic(() => import('qrcode.react').then(m => ({ default: m.QRCodeSVG })), { ssr: false })
 import Link from 'next/link'
+import Image from 'next/image'
 import toast from 'react-hot-toast'
+import AddToWallet from './AddToWallet'
 
 interface Reward {
   id: string
@@ -14,6 +16,22 @@ interface Reward {
   description: string | null
   pointsCost: number
   emoji: string | null
+}
+
+interface ActiveCampaign {
+  id: string
+  name: string
+  type: string // "points_multiplier" | "stamp_multiplier" | "bonus_points"
+  multiplier: number | null
+  bonusPoints: number | null
+  endsAt: string
+}
+
+function campaignBannerText(c: ActiveCampaign): string {
+  const until = new Date(c.endsAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })
+  if (c.type === 'points_multiplier') return `x${c.multiplier} puntos hasta el ${until}`
+  if (c.type === 'stamp_multiplier') return `x${c.multiplier} sellos hasta el ${until}`
+  return `+${c.bonusPoints} pts de regalo por compra hasta el ${until}`
 }
 
 interface Transaction {
@@ -38,6 +56,10 @@ interface Cafe {
   stampReward: string
   pointsEnabled: boolean
   currencySymbol: string
+  reviewUrl: string | null
+  referralEnabled: boolean
+  referralRewardType: string
+  referralRewardAmount: number
   rewards: Reward[]
 }
 
@@ -48,7 +70,7 @@ interface CustomerData {
   phone: string | null
   birthdate: string | null
   favoriteDrink: string | null
-  loyalty: { stamps: number; totalStamps: number; points: number; totalSpent: number } | null
+  loyalty: { stamps: number; totalStamps: number; points: number; totalSpent: number; stampsExpireAt: string | null; bonusPoints?: number; bonusExpireAt?: string | null; referralCode?: string | null } | null
   transactions: Transaction[]
 }
 
@@ -67,6 +89,11 @@ function txLabel(tx: Transaction): { text: string; value: string; positive: bool
     case 'stamp_add':    return { text: 'Sello agregado',    value: '+1 sello',                             positive: true  }
     case 'stamp_redeem': return { text: tx.note?.replace('Redeemed: ', '') || 'Premio canjeado', value: '🎉 Premio', positive: true }
     case 'points_add':   return { text: 'Compra registrada', value: `+${tx.points} pts`,                   positive: true  }
+    case 'referral_reward': return {
+      text: 'Premio por invitar a un amigo',
+      value: tx.stamps ? `+${tx.stamps} ${tx.stamps === 1 ? 'sello' : 'sellos'}` : `+${tx.points} pts`,
+      positive: true,
+    }
     case 'points_redeem':return { text: tx.note?.replace('Redeemed: ', '') || 'Recompensa canjeada', value: `-${Math.abs(tx.points ?? 0)} pts`, positive: false }
     default:             return { text: tx.type, value: '', positive: true }
   }
@@ -127,6 +154,39 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
   const [profileForm, setProfileForm] = useState({ phone: '', birthdate: '', favoriteDrink: '' })
   const [showQr, setShowQr] = useState(false)
   const [customerToken, setCustomerToken] = useState<string | null>(null)
+  const [activeCampaigns, setActiveCampaigns] = useState<ActiveCampaign[]>([])
+
+  // Campañas vivas del café (la página es ISR, esto se busca fresco al montar)
+  useEffect(() => {
+    fetch(`/api/campaign/public?cafeId=${cafe.id}`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => { if (Array.isArray(data)) setActiveCampaigns(data) })
+      .catch(() => { /* sin banner */ })
+  }, [cafe.id])
+
+  // Código de invitación (?ref=): se guarda hasta completar el login/registro (sobrevive al ida-y-vuelta del OTP)
+  const [pendingRef, setPendingRef] = useState<string | null>(null)
+  useEffect(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get('ref')
+      if (fromUrl?.trim()) {
+        setPendingRef(fromUrl.trim())
+        localStorage.setItem(`sipo_ref_${cafe.id}`, JSON.stringify({ code: fromUrl.trim(), savedAt: Date.now() }))
+        return
+      }
+      const raw = localStorage.getItem(`sipo_ref_${cafe.id}`)
+      if (raw) {
+        const { code, savedAt } = JSON.parse(raw)
+        if (Date.now() - savedAt < 24 * 60 * 60 * 1000) setPendingRef(code)
+        else localStorage.removeItem(`sipo_ref_${cafe.id}`)
+      }
+    } catch { /* sin ref */ }
+  }, [cafe.id])
+
+  function clearPendingRef() {
+    setPendingRef(null)
+    try { localStorage.removeItem(`sipo_ref_${cafe.id}`) } catch { /* ignore */ }
+  }
 
   // Hydrate session from localStorage on mount
   useEffect(() => {
@@ -207,7 +267,7 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
       const res = await fetch('/api/customer/otp/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code: otpCode, cafeId: cafe.id }),
+        body: JSON.stringify({ email, code: otpCode, cafeId: cafe.id, ...(pendingRef ? { ref: pendingRef } : {}) }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -218,6 +278,7 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
         setCustomerToken(data.customerToken ?? null)
         setStep('register')
       } else {
+        clearPendingRef()
         setCustomer(data)
         setCustomerToken(data.customerToken ?? null)
         saveSession(cafe.id, email, data, data.customerToken)
@@ -238,13 +299,14 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
           'Content-Type': 'application/json',
           ...(customerToken ? { Authorization: `Bearer ${customerToken}` } : {}),
         },
-        body: JSON.stringify({ email, name, cafeId: cafe.id }),
+        body: JSON.stringify({ email, name, cafeId: cafe.id, ...(pendingRef ? { ref: pendingRef } : {}) }),
       })
       const data = await res.json()
       if (!res.ok) {
         toast.error(data.error || 'Error al registrarse')
         return
       }
+      clearPendingRef()
       setCustomer(data)
       setCustomerToken(data.customerToken ?? null)
       saveSession(cafe.id, email, data, data.customerToken)
@@ -319,8 +381,33 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
     return bd.getUTCMonth() === today.getUTCMonth() && bd.getUTCDate() === today.getUTCDate()
   }
 
+  // Referidos: link para invitar amigos
+  const referralCode = customer?.loyalty?.referralCode ?? null
+  const referralLink = referralCode
+    ? `${typeof window !== 'undefined' ? window.location.origin : 'https://sipo.ar'}/${cafe.slug}/loyalty?ref=${referralCode}`
+    : ''
+  const referralRewardLabel = cafe.referralRewardType === 'stamps'
+    ? `${cafe.referralRewardAmount} ${cafe.referralRewardAmount === 1 ? 'sello' : 'sellos'}`
+    : `${cafe.referralRewardAmount} puntos`
+
+  async function copyReferral() {
+    try { await navigator.clipboard.writeText(referralLink); toast.success('Link copiado') }
+    catch { toast.error('No se pudo copiar') }
+  }
+
+  async function shareReferral() {
+    if (navigator.share) {
+      try { await navigator.share({ title: cafe.name, text: `Sumate al programa de beneficios de ${cafe.name} ☕`, url: referralLink }) }
+      catch { /* compartir cancelado */ }
+    } else copyReferral()
+  }
+
   const stamps = customer?.loyalty?.stamps ?? 0
-  const points = customer?.loyalty?.points ?? 0
+  // Puntos de regalo (campañas): cuentan si el bucket no venció
+  const rawBonus = customer?.loyalty?.bonusPoints ?? 0
+  const bonusExpireAt = customer?.loyalty?.bonusExpireAt ? new Date(customer.loyalty.bonusExpireAt) : null
+  const bonusPoints = rawBonus > 0 && (!bonusExpireAt || bonusExpireAt >= new Date()) ? rawBonus : 0
+  const points = (customer?.loyalty?.points ?? 0) + bonusPoints
 
   return (
     <div
@@ -330,7 +417,15 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
       {/* ── Background photo + solid overlay ── */}
       {hasCover && (
         <div className="fixed inset-0 z-0">
-          <img src={cafe.coverUrl!} alt="" className="w-full h-full object-cover" />
+          <Image
+            src={cafe.coverUrl!}
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover"
+            unoptimized={!cafe.coverUrl!.includes('.supabase.co')}
+          />
           <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(15,12,10,0.2) 0%, rgba(15,12,10,0.55) 40%, rgba(15,12,10,0.88) 100%)' }} />
         </div>
       )}
@@ -627,6 +722,30 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
                 </motion.div>
               )}
 
+              {/* Campañas activas */}
+              {activeCampaigns.map(c => (
+                <motion.div
+                  key={c.id}
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="px-4 py-3 rounded-2xl flex items-center gap-3"
+                  style={hasCover
+                    ? { background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.22)' }
+                    : { background: `${accent}14`, border: `1px solid ${accent}44` }
+                  }
+                >
+                  <span className="text-lg">{c.type === 'bonus_points' ? '🎁' : '🔥'}</span>
+                  <div className="min-w-0">
+                    <p className="font-sans font-semibold text-sm truncate" style={{ color: hasCover ? 'white' : '#43352C' }}>
+                      {c.name}
+                    </p>
+                    <p className="font-sans text-xs mt-0.5" style={{ color: hasCover ? 'rgba(255,255,255,0.65)' : '#6B6B6B' }}>
+                      {campaignBannerText(c)}
+                    </p>
+                  </div>
+                </motion.div>
+              ))}
+
               {/* Tab switcher */}
               {cafe.stampEnabled && cafe.pointsEnabled && (
                 <div
@@ -672,6 +791,12 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
                   <div className="font-sans text-xs mb-3" style={{ color: textMuted }}>
                     Premio: {cafe.stampReward}
                   </div>
+                  {stamps > 0 && customer?.loyalty?.stampsExpireAt && (
+                    <div className="font-sans text-xs mb-3 flex items-center gap-1.5" style={{ color: textFaint }}>
+                      <Clock size={11} />
+                      Vencen el {new Date(customer.loyalty.stampsExpireAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
+                    </div>
+                  )}
 
                   {/* Progress bar — más gruesa y visible */}
                   <div
@@ -753,6 +878,13 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
                         pts
                       </div>
                     </div>
+                    {bonusPoints > 0 && (
+                      <div className="font-sans text-xs mt-1.5 flex items-center gap-1.5" style={{ color: textFaint }}>
+                        <span>🎁</span>
+                        Incluye {Math.floor(bonusPoints).toLocaleString()} pts de regalo
+                        {bonusExpireAt && ` · vencen el ${bonusExpireAt.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}`}
+                      </div>
+                    )}
                   </div>
 
                   {cafe.rewards.length > 0 && (
@@ -873,6 +1005,75 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
                         </div>
                       )
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* Agregar la tarjeta al teléfono (PWA / wallet) */}
+              <AddToWallet style={card} textMain={textMain} textMuted={textMuted} accent={accent} />
+
+              {/* Reseña — pedir review de Google Maps */}
+              {cafe.reviewUrl && (
+                <a
+                  href={cafe.reviewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3.5 w-full px-4 py-3.5 rounded-2xl transition-all duration-200 hover:opacity-85 active:scale-[0.98] mt-2"
+                  style={card}
+                >
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${accent}22` }}>
+                    <Star size={15} style={{ color: accent }} fill={accent} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-sans font-semibold text-sm" style={{ color: textMain }}>¿Disfrutás tu café?</div>
+                    <div className="font-sans text-xs" style={{ color: textMuted }}>Dejanos una reseña, nos ayuda un montón ⭐</div>
+                  </div>
+                </a>
+              )}
+
+              {/* Invitá y ganá — referidos */}
+              {cafe.referralEnabled && referralCode && (
+                <div className="p-4 rounded-2xl mt-2" style={card}>
+                  <div className="flex items-center gap-3.5 mb-3">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-lg" style={{ background: `${accent}22` }}>
+                      🤝
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-sans font-semibold text-sm" style={{ color: textMain }}>Invitá y ganá</div>
+                      <div className="font-sans text-xs" style={{ color: textMuted }}>
+                        Cuando tu amigo haga su primera compra, vos ganás {referralRewardLabel}.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="flex-1 min-w-0 px-3 py-2.5 rounded-xl font-sans text-xs truncate"
+                      style={hasCover
+                        ? { background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.75)' }
+                        : { background: '#F6F0E8', border: '1px solid #E9DED1', color: '#6B6B6B' }
+                      }
+                    >
+                      {referralLink.replace(/^https?:\/\//, '')}
+                    </div>
+                    <button
+                      onClick={copyReferral}
+                      className="p-2.5 rounded-xl transition-all active:scale-95 flex-shrink-0"
+                      style={hasCover
+                        ? { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }
+                        : { background: '#F6F0E8', color: '#6B6B6B', border: '1px solid #E9DED1' }
+                      }
+                      title="Copiar link"
+                    >
+                      <Copy size={15} />
+                    </button>
+                    <button
+                      onClick={shareReferral}
+                      className="p-2.5 rounded-xl text-white transition-all active:scale-95 flex-shrink-0"
+                      style={{ background: hasCover ? primary : '#43352C' }}
+                      title="Compartir"
+                    >
+                      <Share2 size={15} />
+                    </button>
                   </div>
                 </div>
               )}

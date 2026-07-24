@@ -25,6 +25,7 @@ model Cafe {
   whatsappUrl  String?
   websiteUrl   String?
   customLinks  String? // JSON array of {label, url, icon}
+  reviewUrl    String? // link de reseña de Google Maps (para pedir reseñas a los clientes)
 
   // Loyalty config
   loyaltyEnabled    Boolean @default(true)
@@ -35,6 +36,22 @@ model Cafe {
   pointsPerPeso     Float   @default(1.0)   // points per currency unit
   currencySymbol    String  @default("$")
   minPurchaseForStamp Float @default(0)     // 0 = no minimum
+  stampExpiryDays   Int     @default(0)     // días hasta que vencen los sellos activos; 0 = no vencen
+
+  // ── Plan / suscripción ────────────────────────────────
+  // Nuevos cafés (alta self-service) arrancan en "trial" con tope de clientes.
+  // Los cafés existentes se marcan isPermanent=true en el backfill (grandfathered).
+  // ── Referidos ─────────────────────────────────────────
+  // El referente cobra recién en la 1ª compra real del referido (anti-abuso).
+  referralEnabled      Boolean @default(false)
+  referralRewardType   String  @default("points") // "points" | "stamps"
+  referralRewardAmount Float   @default(50)
+
+  planStatus    String    @default("trial")  // "trial" | "active" | "expired"
+  isPermanent   Boolean   @default(false)     // activado para siempre por superadmin / grandfathered
+  activeUntil   DateTime?                      // vencimiento cuando planStatus="active"
+  customerLimit Int       @default(5)          // tope de clientes del plan gratuito (ignorado si permanente/activo)
+  activatedAt   DateTime?                      // última activación por superadmin
 
   owner    Owner    @relation(fields: [ownerId], references: [id])
   ownerId  String
@@ -43,6 +60,9 @@ model Cafe {
   rewards   Reward[]
   transactions Transaction[]
   staff     CafeStaff[]
+  campaigns Campaign[]
+  referrals Referral[]
+  apiKeys   ApiKey[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -108,6 +128,16 @@ model CustomerCafe {
   points     Float    @default(0)
   totalSpent Float    @default(0)
 
+  stampsExpireAt     DateTime? // cuándo vencen los sellos activos (se renueva con cada sello nuevo)
+  stampsExpiryWarned Boolean  @default(false) // ya se avisó del vencimiento próximo (evita spam)
+
+  // Puntos de regalo (campañas bonus_points). Bucket único con un solo vencimiento,
+  // mismo patrón que los sellos: cada regalo nuevo renueva el deadline de todo el bucket.
+  bonusPoints   Float     @default(0)
+  bonusExpireAt DateTime?
+
+  referralCode String? @unique // código para invitar amigos a este café (se genera al pedirlo)
+
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -122,14 +152,16 @@ model Transaction {
   customer    Customer @relation(fields: [customerId], references: [id])
   customerId  String
 
-  type        String   // "stamp_add" | "stamp_redeem" | "points_add" | "points_redeem"
+  type        String   // "stamp_add" | "stamp_redeem" | "points_add" | "points_redeem" | "referral_reward"
   amount      Float?   // purchase amount (for points)
   stamps      Int?     // stamps added/used
   points      Float?   // points added/used
   note        String?  // e.g. reward name redeemed
+  externalId  String?  // idempotencia de la API v1: id del ticket/venta en el sistema externo
 
   createdAt   DateTime @default(now())
 
+  @@unique([cafeId, externalId]) // un mismo ticket externo no puede acreditarse dos veces
   @@index([cafeId])
   @@index([cafeId, createdAt])
   @@index([customerId])
@@ -147,4 +179,85 @@ model Reward {
   createdAt   DateTime @default(now())
 
   @@index([cafeId])
+}
+
+// Campañas del dueño: multiplicadores de puntos/sellos o puntos de regalo por compra,
+// con vigencia por fechas. Se aplican en /api/transaction al registrar la compra.
+model Campaign {
+  id              String   @id @default(cuid())
+  cafe            Cafe     @relation(fields: [cafeId], references: [id])
+  cafeId          String
+  name            String
+  type            String   // "points_multiplier" | "stamp_multiplier" | "bonus_points"
+  multiplier      Float?   // para *_multiplier (ej: 2 = doble)
+  bonusPoints     Float?   // para bonus_points: pts de regalo por compra
+  bonusExpiryDays Int      @default(30) // vigencia de los pts de regalo desde que se otorgan
+  startsAt        DateTime
+  endsAt          DateTime
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@index([cafeId, endsAt])
+}
+
+// Referidos: se crea "pending" cuando el referido se suma con un código, y pasa a
+// "converted" (acreditando el premio al referente UNA sola vez) en su 1ª compra real.
+model Referral {
+  id                 String    @id @default(cuid())
+  cafe               Cafe      @relation(fields: [cafeId], references: [id])
+  cafeId             String
+  referrerCustomerId String
+  referredCustomerId String
+  status             String    @default("pending") // "pending" | "converted"
+  rewardGranted      Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  convertedAt        DateTime?
+
+  @@unique([cafeId, referredCustomerId]) // un cliente solo puede ser referido una vez por café
+  @@index([cafeId, referrerCustomerId])
+}
+
+// Claves de la API pública v1 (integraciones ERP/POS por café).
+// Nunca se guarda la clave: solo su hash SHA-256 y un prefijo visible para identificarla.
+model ApiKey {
+  id         String    @id @default(cuid())
+  cafe       Cafe      @relation(fields: [cafeId], references: [id])
+  cafeId     String
+  name       String    // "Restolia", "Zapier"…
+  prefix     String    // ej: "sipo_live_ab12…" (identificación visual)
+  keyHash    String    @unique // sha256 hex de la clave completa
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([cafeId])
+}
+
+// Config global de la plataforma (fila única, id="singleton").
+// La edita el superadmin; la landing/demo lee de acá sus datos de contacto.
+model PlatformConfig {
+  id             String   @id @default("singleton")
+  contactEmail   String?
+  whatsappNumber String?  // solo dígitos, formato internacional (ej: 549341...)
+  whatsappUrl    String?  // opcional, si se prefiere un link armado
+  instagramUrl   String?  // IG de la plataforma Sipo
+  xUrl           String?  // X/Twitter de la plataforma Sipo
+  graceDays      Int      @default(7)  // días de gracia tras el vencimiento antes de cortar
+  updatedAt      DateTime @updatedAt
+}
+
+// Solicitudes de alta self-service (leads). No están ligadas a un Cafe todavía.
+model CafeSignupRequest {
+  id         String   @id @default(cuid())
+  cafeName   String
+  ownerName  String
+  email      String
+  phone      String?
+  city       String?
+  instagram  String?
+  message    String?
+  status     String   @default("pending") // "pending" | "approved" | "rejected"
+  createdAt  DateTime @default(now())
+
+  @@index([status])
 }

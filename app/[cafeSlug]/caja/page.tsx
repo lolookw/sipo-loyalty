@@ -76,7 +76,8 @@ export default async function CajaPage({ params }: { params: Promise<{ cafeSlug:
                     <div className="text-base leading-none mt-0.5">
                       {tx.type === 'stamp_add'    ? '☕' :
                        tx.type === 'stamp_redeem' ? '🎟' :
-                       tx.type === 'points_add'   ? '⭐' : '🎁'}
+                       tx.type === 'points_add'   ? '⭐' :
+                       tx.type === 'referral_reward' ? '🤝' : '🎁'}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-sans text-xs font-medium truncate" style={{ color: '#43352C' }}>
@@ -87,6 +88,7 @@ export default async function CajaPage({ params }: { params: Promise<{ cafeSlug:
                         {tx.type === 'stamp_redeem' && 'Sello canjeado'}
                         {tx.type === 'points_add'   && `+${Math.floor(tx.points ?? 0)} pts`}
                         {tx.type === 'points_redeem' && tx.note}
+                        {tx.type === 'referral_reward' && `Premio por referido (${tx.stamps ? `+${tx.stamps} sellos` : `+${Math.floor(tx.points ?? 0)} pts`})`}
                       </div>
                     </div>
                     <div className="font-sans text-xs flex-shrink-0" style={{ color: '#C0B4A8' }}>

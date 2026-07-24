@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
+import ApiKeysManager from './ApiKeysManager'
 import dynamic from 'next/dynamic'
 const Cropper = dynamic<any>(() => import('react-easy-crop'), { ssr: false })
 import toast from 'react-hot-toast'
@@ -52,14 +53,19 @@ interface Cafe {
   whatsappUrl: string | null
   websiteUrl: string | null
   customLinks: string | null
+  reviewUrl: string | null
   loyaltyEnabled: boolean
   stampEnabled: boolean
   stampsRequired: number
   stampReward: string
   minPurchaseForStamp: number
+  stampExpiryDays: number
   pointsEnabled: boolean
   pointsPerPeso: number
   currencySymbol: string
+  referralEnabled: boolean
+  referralRewardType: string
+  referralRewardAmount: number
 }
 
 interface StaffMember {
@@ -73,6 +79,7 @@ interface Props {
   cafe: Cafe
   cafeStaff: StaffMember[]
   isSuperAdmin: boolean
+  apiAllowed: boolean
 }
 
 // ── Shared input style ─────────────────────────────────────────────────────
@@ -279,7 +286,7 @@ function ImageUpload({
   )
 }
 
-export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdmin }: Props) {
+export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdmin, apiAllowed }: Props) {
   const [form, setForm] = useState({
     name: cafe.name,
     description: cafe.description || '',
@@ -292,14 +299,19 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
     instagramUrl: cafe.instagramUrl || '',
     whatsappUrl: cafe.whatsappUrl || '',
     websiteUrl: cafe.websiteUrl || '',
+    reviewUrl: cafe.reviewUrl || '',
     loyaltyEnabled: cafe.loyaltyEnabled,
     stampEnabled: cafe.stampEnabled,
     stampsRequired: cafe.stampsRequired,
     stampReward: cafe.stampReward,
     minPurchaseForStamp: cafe.minPurchaseForStamp,
+    stampExpiryDays: cafe.stampExpiryDays,
     pointsEnabled: cafe.pointsEnabled,
     pointsPerPeso: cafe.pointsPerPeso,
     currencySymbol: cafe.currencySymbol,
+    referralEnabled: cafe.referralEnabled,
+    referralRewardType: cafe.referralRewardType,
+    referralRewardAmount: cafe.referralRewardAmount,
   })
   const [customLinks, setCustomLinks] = useState<{ label: string; url: string }[]>(
     cafe.customLinks ? JSON.parse(cafe.customLinks) : []
@@ -562,6 +574,14 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
           <Field label="Instagram"><SInput value={form.instagramUrl} onChange={v => set('instagramUrl', v)} placeholder="https://instagram.com/…" /></Field>
           <Field label="WhatsApp"><SInput value={form.whatsappUrl} onChange={v => set('whatsappUrl', v)} placeholder="https://wa.me/…" /></Field>
           <Field label="Sitio web"><SInput value={form.websiteUrl} onChange={v => set('websiteUrl', v)} placeholder="https://…" /></Field>
+          <Field label="Link de reseña (Google Maps)">
+            <SInput value={form.reviewUrl} onChange={v => set('reviewUrl', v)} placeholder="https://g.page/r/…/review" />
+            <p className="font-sans text-xs mt-1.5 leading-relaxed" style={{ color: '#9B9089' }}>
+              Con esto, tus clientes ven un botón para dejarte una reseña. Para conseguir el link:
+              buscá tu cafetería en Google, entrá a tu perfil de negocio → “Pedí reseñas” / “Compartir”,
+              y copiá el enlace directo (suele empezar con <span className="font-mono">g.page/r/</span>).
+            </p>
+          </Field>
           <div>
             <div
               className="font-sans text-xs font-medium uppercase tracking-wider mb-3"
@@ -645,6 +665,18 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
                       </div>
                       <p className="font-sans text-xs mt-1" style={{ color: '#9B9089' }}>0 = sin mínimo.</p>
                     </Field>
+                    <Field label="Vencimiento de sellos (días)">
+                      <input
+                        type="number" min={0} max={365} step={1}
+                        value={form.stampExpiryDays}
+                        onChange={e => set('stampExpiryDays', parseInt(e.target.value) || 0)}
+                        className="w-24 px-3.5 py-2.5 rounded-xl font-sans outline-none text-sm transition-colors"
+                        style={sInputStyle}
+                      />
+                      <p className="font-sans text-xs mt-1" style={{ color: '#9B9089' }}>
+                        0 = no vencen. Con un valor, cada sello nuevo renueva el plazo de todos, y se avisa por email 7 días antes.
+                      </p>
+                    </Field>
                   </div>
                 )}
               </div>
@@ -669,8 +701,42 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
                   </div>
                 )}
               </div>
+              <div className="p-4 rounded-xl" style={{ background: '#FCFBF8', border: '1px solid #F6F0E8' }}>
+                <Toggle checked={form.referralEnabled} onChange={v => set('referralEnabled', v)} label="Referidos (invitá y ganá)" primaryColor={form.primaryColor} />
+                {form.referralEnabled && (
+                  <div className="mt-3 space-y-3 pt-3" style={{ borderTop: '1px solid #E9DED1' }}>
+                    <Field label="Premio para quien invita">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number" min={1} step={1}
+                          value={form.referralRewardAmount}
+                          onChange={e => set('referralRewardAmount', parseFloat(e.target.value) || 1)}
+                          className="w-24 px-3.5 py-2.5 rounded-xl font-sans outline-none text-sm transition-colors"
+                          style={sInputStyle}
+                        />
+                        <select
+                          value={form.referralRewardType}
+                          onChange={e => set('referralRewardType', e.target.value)}
+                          className="px-3.5 py-2.5 rounded-xl font-sans outline-none text-sm transition-colors"
+                          style={sInputStyle}
+                        >
+                          {form.pointsEnabled && <option value="points">puntos</option>}
+                          {form.stampEnabled && <option value="stamps">sellos</option>}
+                        </select>
+                      </div>
+                      <p className="font-sans text-xs mt-1" style={{ color: '#9B9089' }}>
+                        Se acredita recién cuando el invitado hace su primera compra (evita abusos).
+                      </p>
+                    </Field>
+                  </div>
+                )}
+              </div>
             </div>
           )}
+        </Section>
+
+        <Section title="Integraciones (API)">
+          <ApiKeysManager cafeId={cafe.id} primaryColor={form.primaryColor} apiAllowed={apiAllowed} />
         </Section>
 
         {/* Cajeros */}

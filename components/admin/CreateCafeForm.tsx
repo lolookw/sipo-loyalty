@@ -3,13 +3,20 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 
-export default function CreateCafeForm() {
+interface CreateCafeInitial {
+  ownerName?: string
+  ownerEmail?: string
+  cafeName?: string
+  cafeSlug?: string
+}
+
+export default function CreateCafeForm({ initial }: { initial?: CreateCafeInitial }) {
   const [form, setForm] = useState({
-    ownerName: '',
-    ownerEmail: '',
+    ownerName: initial?.ownerName ?? '',
+    ownerEmail: initial?.ownerEmail ?? '',
     ownerPassword: '',
-    cafeName: '',
-    cafeSlug: '',
+    cafeName: initial?.cafeName ?? '',
+    cafeSlug: initial?.cafeSlug ?? '',
   })
   const [loading, setLoading] = useState(false)
   const [created, setCreated] = useState<{ cafeName: string; slug: string; email: string } | null>(null)

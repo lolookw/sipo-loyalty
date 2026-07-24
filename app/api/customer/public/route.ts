@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { signCustomerToken, verifyCustomerToken, extractBearerToken } from '@/lib/customerToken'
+import { cafeCanAcceptCustomer } from '@/lib/plan'
+import { attachReferral, ensureReferralCode } from '@/lib/referrals'
 
 // GET /api/customer/public?email=xxx&cafeId=xxx  — requires customer JWT
 export async function GET(req: NextRequest) {
@@ -28,7 +30,13 @@ export async function GET(req: NextRequest) {
     select: { id: true, type: true, stamps: true, points: true, amount: true, note: true, createdAt: true },
   })
 
-  return NextResponse.json({ ...customer, loyalty: customer.cafes[0] || null, transactions })
+  let loyalty = customer.cafes[0] || null
+  if (loyalty && !loyalty.referralCode) {
+    const refCode = await ensureReferralCode(prisma, loyalty.id)
+    if (refCode) loyalty = { ...loyalty, referralCode: refCode }
+  }
+
+  return NextResponse.json({ ...customer, loyalty, transactions })
 }
 
 // PATCH /api/customer/public — update customer profile, requires customer JWT
@@ -61,7 +69,7 @@ export async function POST(req: NextRequest) {
   const tokenEmail = await verifyCustomerToken(extractBearerToken(req.headers.get('authorization')) ?? '')
   if (!tokenEmail) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { email, name, cafeId } = await req.json()
+  const { email, name, cafeId, ref } = await req.json()
   if (!email || !name || !cafeId)
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
@@ -71,17 +79,40 @@ export async function POST(req: NextRequest) {
   const cafe = await prisma.cafe.findUnique({ where: { id: cafeId } })
   if (!cafe) return NextResponse.json({ error: 'Cafe not found' }, { status: 404 })
 
+  // Límite del plan gratuito: bloquear clientes nuevos si el café llegó al tope (los ya vinculados pasan)
+  if (!(await cafeCanAcceptCustomer(cafe, normalizedEmail)))
+    return NextResponse.json(
+      { error: 'Esta cafetería alcanzó el máximo de su plan por ahora. Volvé a intentar más tarde.', planLimitReached: true },
+      { status: 403 },
+    )
+
   const customer = await prisma.customer.upsert({
     where: { email: normalizedEmail },
     update: { name },
     create: { email: normalizedEmail, name },
   })
 
-  const link = await prisma.customerCafe.upsert({
+  const preExisting = await prisma.customerCafe.findUnique({
+    where: { customerId_cafeId: { customerId: customer.id, cafeId } },
+    select: { id: true },
+  })
+
+  let link = await prisma.customerCafe.upsert({
     where: { customerId_cafeId: { customerId: customer.id, cafeId } },
     update: {},
     create: { customerId: customer.id, cafeId },
   })
+
+  if (!link.referralCode) {
+    const refCode = await ensureReferralCode(prisma, link.id)
+    if (refCode) link = { ...link, referralCode: refCode }
+  }
+
+  // Vino con código de invitación y es realmente nuevo en el café → referido pendiente
+  if (!preExisting && typeof ref === 'string' && ref.trim()) {
+    try { await attachReferral(prisma, { cafeId, code: ref, referredCustomerId: customer.id }) }
+    catch (e) { console.error('referral attach error:', e) } // nunca bloquea el alta
+  }
 
   const customerToken = await signCustomerToken(normalizedEmail)
   return NextResponse.json({ ...customer, loyalty: link, transactions: [], customerToken })

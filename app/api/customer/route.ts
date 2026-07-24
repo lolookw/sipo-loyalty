@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getCafeIfAuthorized } from '@/lib/cafeAuth'
+import { cafeCanAcceptCustomer } from '@/lib/plan'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -63,6 +64,13 @@ export async function POST(req: NextRequest) {
   if (!cafe) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const normalizedEmail = email.trim().toLowerCase()
+
+  // Límite del plan gratuito: no permitir sumar un cliente nuevo si el café llegó al tope
+  if (!(await cafeCanAcceptCustomer(cafe, normalizedEmail)))
+    return NextResponse.json(
+      { error: 'Llegaste al máximo de clientes del plan gratuito. Activá tu cuenta para sumar más.', planLimitReached: true },
+      { status: 403 },
+    )
 
   const customer = await prisma.customer.upsert({
     where: { email: normalizedEmail },
