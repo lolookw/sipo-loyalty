@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download } from 'lucide-react'
 
 const PAGE_SIZE = 50
 
@@ -43,13 +43,25 @@ export default async function CafeCustomersPage({
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
-      <div className="mb-7">
-        <h1 className="font-serif font-medium mb-1" style={{ fontSize: '1.7rem', color: '#43352C' }}>
-          Clientes
-        </h1>
-        <p className="font-sans text-sm" style={{ color: '#6B6B6B' }}>
-          {totalCount} clientes registrados
-        </p>
+      <div className="mb-7 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-serif font-medium mb-1" style={{ fontSize: '1.7rem', color: '#43352C' }}>
+            Clientes
+          </h1>
+          <p className="font-sans text-sm" style={{ color: '#6B6B6B' }}>
+            {totalCount} clientes registrados
+          </p>
+        </div>
+        {totalCount > 0 && (
+          <a
+            href={`/api/cafe/${cafeSlug}/customers/export`}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-sans text-xs font-medium transition-colors flex-shrink-0"
+            style={{ border: '1px solid #E9DED1', color: '#43352C', background: 'white' }}
+          >
+            <Download size={14} />
+            Descargar CSV
+          </a>
+        )}
       </div>
 
       <div

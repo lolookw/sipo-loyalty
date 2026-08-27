@@ -3,18 +3,20 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
-import { LayoutDashboard, Settings, Users, Gift, LogOut, Coffee, ExternalLink, ShieldCheck, BarChart3, Megaphone } from 'lucide-react'
+import { LayoutDashboard, Settings, Users, Gift, LogOut, Coffee, ExternalLink, ShieldCheck, BarChart3, Megaphone, Compass, Send } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Props {
-  cafe: { id: string; slug: string; name: string; primaryColor: string }
+  cafe: { id: string; slug: string; name: string; primaryColor: string; onboardingSeenAt?: Date | null }
   userName: string
   isSuperAdmin: boolean
+  isOwner?: boolean
 }
 
-export default function AdminSidebar({ cafe, userName, isSuperAdmin }: Props) {
+export default function AdminSidebar({ cafe, userName, isSuperAdmin, isOwner }: Props) {
   const pathname = usePathname()
   const base = `/${cafe.slug}/admin`
+  const showOnboardingBadge = isOwner && !cafe.onboardingSeenAt
 
   const navItems = [
     { href: base, label: 'Inicio', icon: LayoutDashboard, exact: true },
@@ -22,7 +24,11 @@ export default function AdminSidebar({ cafe, userName, isSuperAdmin }: Props) {
     { href: `${base}/customers`, label: 'Clientes', icon: Users },
     { href: `${base}/rewards`, label: 'Recompensas', icon: Gift },
     { href: `${base}/campaigns`, label: 'Campañas', icon: Megaphone },
+    { href: `${base}/broadcasts`, label: 'Difusión', icon: Send },
     { href: `${base}/settings`, label: 'Configuración', icon: Settings },
+    ...(isOwner || isSuperAdmin
+      ? [{ href: `${base}/getting-started`, label: 'Guía de inicio', icon: Compass, badge: showOnboardingBadge }]
+      : []),
   ]
 
   const sidebarBg   = '#1A1310'
@@ -55,7 +61,7 @@ export default function AdminSidebar({ cafe, userName, isSuperAdmin }: Props) {
       </div>
 
       <nav className="flex-1 px-3 py-3 space-y-0.5">
-        {navItems.map(({ href, label, icon: Icon, exact }) => {
+        {navItems.map(({ href, label, icon: Icon, exact, badge }) => {
           const active = exact ? pathname === href : pathname.startsWith(href)
           return (
             <Link
@@ -68,6 +74,9 @@ export default function AdminSidebar({ cafe, userName, isSuperAdmin }: Props) {
             >
               <Icon size={15} />
               {label}
+              {badge && (
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#B56A4C' }} />
+              )}
             </Link>
           )
         })}

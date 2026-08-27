@@ -34,9 +34,11 @@ The goal is not just to show screens. It shows how a small business SaaS handles
 | Owner/staff login | Role-aware access for café teams |
 | Cashier dashboard | Fast customer search, stamp updates, purchases, and redemptions |
 | Settings dashboard | Branding, links, staff users, loyalty configuration, referral program, and API keys |
-| Campaigns dashboard | Time-limited point/stamp multipliers and bonus-point campaigns |
+| Campaigns dashboard | Time-limited point/stamp multipliers, bonus-point campaigns, and a welcome bonus for new signups |
 | Rewards dashboard | Create and manage point-based rewards |
-| Customers dashboard | Review registered customers, stamps, points, and spend |
+| Customers dashboard | Review registered customers, stamps, points, and spend — with a one-click CSV export |
+| Broadcasts dashboard | Send a one-time email update to all opted-in customers, queued and rate-limited by the cron |
+| Getting started guide | Self-updating setup checklist for new café owners, with per-step skip |
 | Analytics dashboard | Visits, new vs. returning customers, redemptions, and peak hours — read-only, owner-facing |
 | Developer docs | `/developers` — public API reference for POS/ERP integrators |
 | Super admin panel | Create cafés, review signup requests, activate plans, manage platform-wide config |
@@ -50,16 +52,18 @@ The goal is not just to show screens. It shows how a small business SaaS handles
 - Open a café-specific landing page.
 - Access menu, maps, Instagram, WhatsApp, website, and custom links.
 - Verify their email with an OTP code.
-- Register for the café loyalty program, optionally via a referral link.
+- Register for the café loyalty program, optionally via a referral link, and get an automatic welcome bonus if the café is running one.
+- Optionally complete their profile (phone, birthday, favorite drink) after registering.
 - View current stamps, lifetime stamps, points, bonus points, and rewards.
-- See active campaigns (multiplier or bonus-point promotions) as a banner.
+- See active campaigns (multiplier, bonus-point, or welcome-bonus promotions) as a banner.
 - Get nudged to leave a Google Maps review after redeeming.
 - Add their loyalty card to their phone's home screen (installable PWA).
 - Invite others and earn a reward once the referred friend makes their first real purchase.
+- Get a re-engagement email if they go quiet or complete a card without redeeming — and unsubscribe from café broadcasts with one click.
 
 ### Baristas / cashiers
 
-- Search customers by email or phone.
+- Search customers by name or email (same lookup logic the public API uses).
 - Add a stamp after a valid purchase.
 - Register purchase amounts to award points — campaign multipliers apply automatically.
 - Redeem completed stamp cards.
@@ -76,7 +80,12 @@ The goal is not just to show screens. It shows how a small business SaaS handles
 - Configure stamp expiration windows.
 - Create time-limited campaigns (point/stamp multipliers, bonus points with their own expiration).
 - Turn on referrals and configure the reward type/amount.
+- Turn on a welcome bonus (points and/or stamps) for customers who just signed up.
+- Turn on re-engagement emails for inactive customers and for completed-but-unredeemed cards, each with its own delay and editable message.
+- Send a one-time broadcast email to customers who haven't opted out, with an explicit confirmation step before it queues.
 - Read their own analytics: visits, new vs. returning customers, redemptions, peak hours.
+- Export their customer list as a CSV.
+- Follow a setup checklist that auto-detects what's already configured (logo, colors, stamps, rewards, staff), with a per-step "skip" for what doesn't apply.
 - Generate and revoke API keys for their own POS/ERP integration.
 - Review customers, points, stamps, and total spend.
 
@@ -111,8 +120,9 @@ curl -X POST https://sipo.ar/api/v1/purchases \
 - **Idempotency**: every purchase/redemption call takes an `external_id`; replaying the same ID (retry, double click) returns the original result instead of double-crediting.
 - **Shared core**: the API and the in-app cashier screen call the same purchase logic (`lib/purchase.ts`), so campaigns, referrals, stamp expiration, and concurrency guards behave identically regardless of which path a transaction comes through.
 - **Plan-gated**: the API is a feature of paid/active plans, not the free trial — enforced server-side on every request, not just in the UI.
+- **Customer lookup**: `/customers/search` shares its matching logic (`lib/customerSearch.ts`) with the in-app cashier search, so an integrator's autocomplete and the barista's own search box behave identically.
 
-Full endpoint reference (`/me`, `/customers`, `/purchases`, `/redemptions`, error codes) lives at [`app/developers/page.tsx`](app/developers/page.tsx) and is served live at `/developers`.
+Full endpoint reference (`/me`, `/customers`, `/customers/search`, `/purchases`, `/redemptions`, error codes) lives at [`app/developers/page.tsx`](app/developers/page.tsx) and is served live at `/developers`.
 
 ---
 
@@ -125,8 +135,9 @@ Full endpoint reference (`/me`, `/customers`, `/purchases`, `/redemptions`, erro
 - **Transactional rewards:** stamp and point operations run inside guarded Prisma transactions to avoid double-spend and race conditions — the same guards apply whether the transaction comes from the cashier UI or the public API.
 - **Idempotent writes:** both the API and internal flows dedupe on an external/idempotency key.
 - **Plan enforcement:** free-tier customer limits, trial/active/permanent states, and API access are all checked server-side, not just hidden in the UI.
-- **Scheduled jobs:** a secret-protected cron endpoint expires stamps and bonus points on schedule and emails a heads-up a few days before expiration.
-- **Configurable loyalty rules:** each café controls its own stamps, points, rewards, campaigns, referral program, and branding independently.
+- **Scheduled jobs:** a secret-protected cron endpoint expires stamps and bonus points on schedule, emails a heads-up a few days before expiration, sends re-engagement and broadcast emails in batches, and rotates through in-flight broadcasts fairly across cafés.
+- **Shared email quota, respected everywhere:** every automated email (OTP, expiration warnings, re-engagement, broadcasts) shares one Resend quota across the whole platform, so batch jobs cap themselves per run rather than risking starving customer-facing OTP delivery.
+- **Configurable loyalty rules:** each café controls its own stamps, points, rewards, campaigns, referral program, re-engagement rules, and branding independently.
 
 ---
 
@@ -138,7 +149,7 @@ Full endpoint reference (`/me`, `/customers`, `/purchases`, `/redemptions`, erro
 | UI | React 18, Tailwind CSS, Framer Motion |
 | Auth | NextAuth.js JWT sessions + hashed per-café API keys |
 | Database | Prisma + PostgreSQL |
-| Email | Resend (OTP codes, expiration notices) |
+| Email | Resend (OTP codes, expiration notices, re-engagement, broadcasts) |
 | Uploads | Supabase Storage |
 | Scheduled jobs | Vercel Cron (`vercel.json`) |
 | Validation/tooling | TypeScript, ESLint, npm audit |
@@ -257,7 +268,8 @@ Important safeguards implemented in the app:
 - the scheduled expiration job requires a bearer secret, so it can't be triggered by an outside caller;
 - sanitized public URLs and custom links;
 - normalized emails and duplicate checks across owner/staff accounts;
-- transaction guards for stamp and points updates, shared by the cashier UI and the public API.
+- transaction guards for stamp and points updates, shared by the cashier UI and the public API;
+- the public unsubscribe link is scoped to one café's broadcasts only (never transactional email) and relies on an unguessable id, the same security model as referral links.
 
 ---
 

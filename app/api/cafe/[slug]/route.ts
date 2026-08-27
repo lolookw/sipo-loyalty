@@ -89,6 +89,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
     return NextResponse.json({ error: 'Tipo de premio por referido inválido' }, { status: 400 })
   }
 
+  const reengagementInactiveDays =
+    body.reengagementInactiveDays === undefined ? undefined : Math.floor(Number(body.reengagementInactiveDays))
+  if (
+    reengagementInactiveDays !== undefined &&
+    (!Number.isFinite(reengagementInactiveDays) || reengagementInactiveDays < 1 || reengagementInactiveDays > 365)
+  ) {
+    return NextResponse.json({ error: 'Días de inactividad inválidos' }, { status: 400 })
+  }
+
+  const reengagementCompletedDays =
+    body.reengagementCompletedDays === undefined ? undefined : Math.floor(Number(body.reengagementCompletedDays))
+  if (
+    reengagementCompletedDays !== undefined &&
+    (!Number.isFinite(reengagementCompletedDays) || reengagementCompletedDays < 1 || reengagementCompletedDays > 365)
+  ) {
+    return NextResponse.json({ error: 'Días de tarjeta completa inválidos' }, { status: 400 })
+  }
+
+  const reengagementInactiveMessage =
+    body.reengagementInactiveMessage === undefined ? undefined : String(body.reengagementInactiveMessage).trim().slice(0, 600) || null
+  const reengagementCompletedMessage =
+    body.reengagementCompletedMessage === undefined ? undefined : String(body.reengagementCompletedMessage).trim().slice(0, 600) || null
+
   const updated = await prisma.cafe.update({
     where: { slug },
     data: {
@@ -118,6 +141,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
       referralEnabled: body.referralEnabled !== undefined ? Boolean(body.referralEnabled) : undefined,
       referralRewardType,
       referralRewardAmount,
+      reengagementInactiveEnabled: body.reengagementInactiveEnabled !== undefined ? Boolean(body.reengagementInactiveEnabled) : undefined,
+      reengagementInactiveDays,
+      reengagementInactiveMessage,
+      reengagementCompletedEnabled: body.reengagementCompletedEnabled !== undefined ? Boolean(body.reengagementCompletedEnabled) : undefined,
+      reengagementCompletedDays,
+      reengagementCompletedMessage,
     },
   })
   revalidatePath(`/${slug}`)

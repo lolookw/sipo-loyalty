@@ -21,9 +21,10 @@ interface Reward {
 interface ActiveCampaign {
   id: string
   name: string
-  type: string // "points_multiplier" | "stamp_multiplier" | "bonus_points"
+  type: string // "points_multiplier" | "stamp_multiplier" | "bonus_points" | "signup_bonus"
   multiplier: number | null
   bonusPoints: number | null
+  bonusStamps: number | null
   endsAt: string
 }
 
@@ -32,6 +33,14 @@ function campaignBannerText(c: ActiveCampaign): string {
   if (c.type === 'points_multiplier') return `x${c.multiplier} puntos hasta el ${until}`
   if (c.type === 'stamp_multiplier') return `x${c.multiplier} sellos hasta el ${until}`
   return `+${c.bonusPoints} pts de regalo por compra hasta el ${until}`
+}
+
+function signupBonusBannerText(c: ActiveCampaign): string {
+  const until = new Date(c.endsAt).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })
+  const parts: string[] = []
+  if (c.bonusPoints) parts.push(`+${c.bonusPoints} pts`)
+  if (c.bonusStamps) parts.push(`+${c.bonusStamps} ${c.bonusStamps === 1 ? 'sello' : 'sellos'}`)
+  return `${parts.join(' y ')} de regalo si te registrás antes del ${until}`
 }
 
 interface Transaction {
@@ -94,6 +103,11 @@ function txLabel(tx: Transaction): { text: string; value: string; positive: bool
       value: tx.stamps ? `+${tx.stamps} ${tx.stamps === 1 ? 'sello' : 'sellos'}` : `+${tx.points} pts`,
       positive: true,
     }
+    case 'signup_bonus': return {
+      text: 'Bono de bienvenida',
+      value: tx.points && tx.stamps ? `+${tx.points} pts y +${tx.stamps}` : tx.stamps ? `+${tx.stamps} ${tx.stamps === 1 ? 'sello' : 'sellos'}` : `+${tx.points} pts`,
+      positive: true,
+    }
     case 'points_redeem':return { text: tx.note?.replace('Redeemed: ', '') || 'Recompensa canjeada', value: `-${Math.abs(tx.points ?? 0)} pts`, positive: false }
     default:             return { text: tx.type, value: '', positive: true }
   }
@@ -152,6 +166,7 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'stamps' | 'points'>('stamps')
   const [profileForm, setProfileForm] = useState({ phone: '', birthdate: '', favoriteDrink: '' })
+  const [justRegistered, setJustRegistered] = useState(false) // recién se registró → el step 'profile' se muestra como invitación, no como edición manual
   const [showQr, setShowQr] = useState(false)
   const [customerToken, setCustomerToken] = useState<string | null>(null)
   const [activeCampaigns, setActiveCampaigns] = useState<ActiveCampaign[]>([])
@@ -310,7 +325,9 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
       setCustomer(data)
       setCustomerToken(data.customerToken ?? null)
       saveSession(cafe.id, email, data, data.customerToken)
-      setStep('dashboard')
+      setProfileForm({ phone: '', birthdate: '', favoriteDrink: '' })
+      setJustRegistered(true)
+      setStep('profile')
       toast.success(`Bienvenido/a, ${name}`)
     } catch { toast.error('Error al registrarse') }
     finally { setLoading(false) }
@@ -318,12 +335,18 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
 
   function openProfile() {
     if (!customer) return
+    setJustRegistered(false)
     setProfileForm({
       phone: customer.phone || '',
       birthdate: customer.birthdate ? customer.birthdate.slice(0, 10) : '',
       favoriteDrink: customer.favoriteDrink || '',
     })
     setStep('profile')
+  }
+
+  function skipProfile() {
+    setJustRegistered(false)
+    setStep('dashboard')
   }
 
   async function handleProfileSave(e: React.FormEvent) {
@@ -348,7 +371,8 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
           saveSession(cafe.id, prev.email, updated, customerToken ?? undefined)
           return updated
         })
-        toast.success('Perfil actualizado')
+        if (!justRegistered) toast.success('Perfil actualizado')
+        setJustRegistered(false)
         setStep('dashboard')
       } else {
         toast.error('Error al guardar')
@@ -401,6 +425,9 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
       catch { /* compartir cancelado */ }
     } else copyReferral()
   }
+
+  // Bono de bienvenida: se anuncia ANTES de registrarse — después ya no aplica
+  const signupCampaign = activeCampaigns.find(c => c.type === 'signup_bonus') ?? null
 
   const stamps = customer?.loyalty?.stamps ?? 0
   // Puntos de regalo (campañas): cuentan si el bucket no venció
@@ -514,6 +541,29 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
                   Ingresá tu email para ver tus sellos y puntos.
                 </p>
               </div>
+
+              {/* Bono de bienvenida — se muestra ANTES de registrarse, es el incentivo para sumarse ahora */}
+              {signupCampaign && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="px-4 py-3.5 rounded-2xl flex items-center gap-3 mb-3"
+                  style={hasCover
+                    ? { background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.22)' }
+                    : { background: `${accent}14`, border: `1px solid ${accent}44` }
+                  }
+                >
+                  <span className="text-xl">🎉</span>
+                  <div className="min-w-0">
+                    <p className="font-sans font-semibold text-sm" style={{ color: textMain }}>
+                      {signupCampaign.name}
+                    </p>
+                    <p className="font-sans text-xs mt-0.5" style={{ color: textMuted }}>
+                      {signupBonusBannerText(signupCampaign)}
+                    </p>
+                  </div>
+                </motion.div>
+              )}
 
               <form onSubmit={handleEmailSubmit} className="space-y-3">
                 <div
@@ -634,6 +684,23 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
                 </p>
               </div>
 
+              {signupCampaign && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="px-4 py-3.5 rounded-2xl flex items-center gap-3 mb-5"
+                  style={hasCover
+                    ? { background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.22)' }
+                    : { background: `${accent}14`, border: `1px solid ${accent}44` }
+                  }
+                >
+                  <span className="text-xl">🎉</span>
+                  <p className="font-sans text-xs" style={{ color: textMain }}>
+                    Al registrarte sumás {signupBonusBannerText(signupCampaign).split(' de regalo')[0]} de regalo, ¡ya mismo!
+                  </p>
+                </motion.div>
+              )}
+
               <form onSubmit={handleRegister} className="space-y-3">
                 <input
                   type="text"
@@ -722,8 +789,8 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
                 </motion.div>
               )}
 
-              {/* Campañas activas */}
-              {activeCampaigns.map(c => (
+              {/* Campañas activas (el bono de bienvenida no aplica: ya está registrado) */}
+              {activeCampaigns.filter(c => c.type !== 'signup_bonus').map(c => (
                 <motion.div
                   key={c.id}
                   initial={{ opacity: 0, scale: 0.97 }}
@@ -1089,21 +1156,33 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
               transition={{ duration: 0.35 }}
             >
               <div className="mb-8 mt-2 flex items-center gap-3">
-                <button
-                  onClick={() => setStep('dashboard')}
-                  className="p-2 rounded-xl transition-all"
-                  style={hasCover
-                    ? { background: 'rgba(255,255,255,0.1)', color: 'white' }
-                    : { background: '#F6F0E8', color: '#43352C', border: '1px solid #E9DED1' }
-                  }
-                >
-                  <ArrowLeft size={17} />
-                </button>
+                {!justRegistered && (
+                  <button
+                    onClick={() => setStep('dashboard')}
+                    className="p-2 rounded-xl transition-all"
+                    style={hasCover
+                      ? { background: 'rgba(255,255,255,0.1)', color: 'white' }
+                      : { background: '#F6F0E8', color: '#43352C', border: '1px solid #E9DED1' }
+                    }
+                  >
+                    <ArrowLeft size={17} />
+                  </button>
+                )}
                 <div>
-                  <p className="font-sans text-xs uppercase tracking-widest font-medium" style={{ color: textFaint }}>Tu cuenta</p>
-                  <p className="font-serif font-medium text-lg leading-tight" style={{ color: textMain }}>Mi perfil</p>
+                  <p className="font-sans text-xs uppercase tracking-widest font-medium" style={{ color: textFaint }}>
+                    {justRegistered ? '¡Ya sos parte!' : 'Tu cuenta'}
+                  </p>
+                  <p className="font-serif font-medium text-lg leading-tight" style={{ color: textMain }}>
+                    {justRegistered ? 'Contanos un poco más de vos' : 'Mi perfil'}
+                  </p>
                 </div>
               </div>
+
+              {justRegistered && (
+                <p className="font-sans text-sm mb-6 -mt-4" style={{ color: textMuted }}>
+                  Opcional: así {cafe.name} te puede saludar por tu cumple o contactarte por WhatsApp. Lo podés completar cuando quieras desde tu perfil.
+                </p>
+              )}
 
               <form onSubmit={handleProfileSave} className="space-y-3">
 
@@ -1201,21 +1280,32 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
                   className="w-full py-4 rounded-2xl font-sans font-semibold text-white text-sm transition-all hover:opacity-85 active:scale-[0.98] disabled:opacity-50 mt-2"
                   style={{ background: hasCover ? primary : '#43352C' }}
                 >
-                  {loading ? 'Guardando…' : 'Guardar cambios'}
+                  {loading ? 'Guardando…' : justRegistered ? 'Guardar y continuar' : 'Guardar cambios'}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="w-full py-3 rounded-2xl font-sans text-sm flex items-center justify-center gap-2 transition-all hover:opacity-70"
-                  style={hasCover
-                    ? { color: 'rgba(255,255,255,0.45)' }
-                    : { color: '#a8a29e' }
-                  }
-                >
-                  <LogOut size={14} />
-                  Cerrar sesión
-                </button>
+                {justRegistered ? (
+                  <button
+                    type="button"
+                    onClick={skipProfile}
+                    className="w-full py-3 rounded-2xl font-sans text-sm transition-all hover:opacity-70"
+                    style={hasCover ? { color: 'rgba(255,255,255,0.6)' } : { color: '#9B9089' }}
+                  >
+                    Ahora no, quiero ver mi tarjeta
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-full py-3 rounded-2xl font-sans text-sm flex items-center justify-center gap-2 transition-all hover:opacity-70"
+                    style={hasCover
+                      ? { color: 'rgba(255,255,255,0.45)' }
+                      : { color: '#a8a29e' }
+                    }
+                  >
+                    <LogOut size={14} />
+                    Cerrar sesión
+                  </button>
+                )}
               </form>
             </motion.div>
           )}

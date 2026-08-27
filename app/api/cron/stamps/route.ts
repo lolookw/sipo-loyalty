@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Resend } from 'resend'
+import { isInactiveEligible, isCompletedEligible, buildReengagementEmailHtml, DEFAULT_INACTIVE_MESSAGE, DEFAULT_COMPLETED_MESSAGE } from '@/lib/reengagement'
+import { buildBroadcastEmailHtml, BROADCAST_BATCH_PER_RUN } from '@/lib/broadcast'
 
 const DAY = 24 * 60 * 60 * 1000
 const WARN_WINDOW = 7 * DAY // avisar cuando faltan <= 7 días
+const REENGAGEMENT_BATCH = 100 // tope por café por corrida (además del tope global de sellos-por-vencer)
 
 // GET /api/cron/stamps — job diario. Protegido por CRON_SECRET (Vercel Cron manda el Bearer).
 // 1) Expira sellos vencidos.  2) Avisa por email los que vencen dentro de 7 días.
+// 3) Reactivación por inactividad.  4) Reactivación por tarjeta completa sin canjear. (opt-in por café)
+// 5) Difusión: drena BroadcastRecipients pendientes en lotes (tope global — cuota de Resend compartida).
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
   if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`)
@@ -81,5 +86,130 @@ export async function GET(req: NextRequest) {
     warned++
   }
 
-  return NextResponse.json({ ok: true, expired: expired.count, bonusExpired: bonusExpired.count, warned })
+  // 3) Reactivación por inactividad — solo cafés que lo activaron, un corte de días propio por café.
+  let reengagedInactive = 0
+  const inactiveCafes = await prisma.cafe.findMany({
+    where: { reengagementInactiveEnabled: true },
+    select: { id: true, slug: true, name: true, reengagementInactiveDays: true, reengagementInactiveMessage: true },
+  })
+  for (const c of inactiveCafes) {
+    const candidates = await prisma.customerCafe.findMany({
+      where: {
+        cafeId: c.id,
+        lastStampAt: { not: null, lte: new Date(now.getTime() - c.reengagementInactiveDays * DAY) },
+        reengagementInactiveSentAt: null,
+        stampsExpireAt: null, // ya le corre el aviso más específico de vencimiento de sellos (F5) — no duplicar
+      },
+      include: { customer: { select: { email: true } } },
+      take: REENGAGEMENT_BATCH,
+    })
+    const { subject, html } = buildReengagementEmailHtml({
+      cafeName: c.name, cafeSlug: c.slug, baseUrl,
+      message: c.reengagementInactiveMessage ?? DEFAULT_INACTIVE_MESSAGE,
+    })
+    for (const link of candidates) {
+      if (!isInactiveEligible(link, c.reengagementInactiveDays, now)) continue // doble check defensivo
+      if (resend && link.customer.email) {
+        try {
+          await resend.emails.send({ from, to: link.customer.email, subject, html })
+        } catch (e) {
+          console.error('cron reengagement (inactive) email error:', e)
+          continue
+        }
+      }
+      await prisma.customerCafe.update({ where: { id: link.id }, data: { reengagementInactiveSentAt: now } })
+      reengagedInactive++
+    }
+  }
+
+  // 4) Reactivación por tarjeta completa sin canjear — mismo patrón que el paso 3.
+  let reengagedCompleted = 0
+  const completedCafes = await prisma.cafe.findMany({
+    where: { reengagementCompletedEnabled: true },
+    select: { id: true, slug: true, name: true, stampsRequired: true, reengagementCompletedDays: true, reengagementCompletedMessage: true },
+  })
+  for (const c of completedCafes) {
+    const candidates = await prisma.customerCafe.findMany({
+      where: {
+        cafeId: c.id,
+        stamps: { gte: c.stampsRequired },
+        cardCompletedAt: { not: null, lte: new Date(now.getTime() - c.reengagementCompletedDays * DAY) },
+        reengagementCompletedSentAt: null,
+      },
+      include: { customer: { select: { email: true } } },
+      take: REENGAGEMENT_BATCH,
+    })
+    const { subject, html } = buildReengagementEmailHtml({
+      cafeName: c.name, cafeSlug: c.slug, baseUrl,
+      message: c.reengagementCompletedMessage ?? DEFAULT_COMPLETED_MESSAGE,
+    })
+    for (const link of candidates) {
+      if (!isCompletedEligible(link, c.stampsRequired, c.reengagementCompletedDays, now)) continue
+      if (resend && link.customer.email) {
+        try {
+          await resend.emails.send({ from, to: link.customer.email, subject, html })
+        } catch (e) {
+          console.error('cron reengagement (completed) email error:', e)
+          continue
+        }
+      }
+      await prisma.customerCafe.update({ where: { id: link.id }, data: { reengagementCompletedSentAt: now } })
+      reengagedCompleted++
+    }
+  }
+
+  // 5) Difusión — drena en orden FIFO entre cafés, tope GLOBAL por corrida (cuota de Resend
+  // compartida por toda la plataforma, incluido el OTP de login: nunca hay que dejarla sin margen).
+  let broadcastSent = 0
+  const inFlightBroadcasts = await prisma.broadcast.findMany({
+    where: { status: { in: ['pending', 'sending'] } },
+    orderBy: { createdAt: 'asc' },
+    include: { cafe: { select: { name: true, slug: true } } },
+  })
+  for (const b of inFlightBroadcasts) {
+    if (broadcastSent >= BROADCAST_BATCH_PER_RUN) break
+    if (b.status === 'pending') await prisma.broadcast.update({ where: { id: b.id }, data: { status: 'sending' } })
+
+    const budget = BROADCAST_BATCH_PER_RUN - broadcastSent
+    const pending = await prisma.broadcastRecipient.findMany({
+      where: { broadcastId: b.id, sentAt: null },
+      include: { customer: { select: { email: true } } },
+      orderBy: { id: 'asc' },
+      take: budget,
+    })
+    for (const rec of pending) {
+      const link = await prisma.customerCafe.findUnique({
+        where: { customerId_cafeId: { customerId: rec.customerId, cafeId: b.cafeId } },
+        select: { id: true, marketingOptOut: true },
+      })
+      // Doble check: si se dio de baja DESPUÉS de componer la difusión, no le mandamos igual.
+      if (!link || link.marketingOptOut) {
+        await prisma.broadcastRecipient.update({ where: { id: rec.id }, data: { sentAt: now } })
+        continue
+      }
+      if (resend && rec.customer.email) {
+        const { subject, html } = buildBroadcastEmailHtml({
+          cafeName: b.cafe.name, subject: b.subject, message: b.message,
+          unsubscribeUrl: `${baseUrl}/unsubscribe/${link.id}`,
+        })
+        try {
+          await resend.emails.send({ from, to: rec.customer.email, subject, html })
+        } catch (e) {
+          console.error('cron broadcast email error:', e)
+          continue // no marcamos sentAt → reintenta la próxima corrida
+        }
+      }
+      await prisma.broadcastRecipient.update({ where: { id: rec.id }, data: { sentAt: now } })
+      await prisma.broadcast.update({ where: { id: b.id }, data: { sentCount: { increment: 1 } } })
+      broadcastSent++
+    }
+
+    const remaining = await prisma.broadcastRecipient.count({ where: { broadcastId: b.id, sentAt: null } })
+    if (remaining === 0) await prisma.broadcast.update({ where: { id: b.id }, data: { status: 'done', completedAt: now } })
+  }
+
+  return NextResponse.json({
+    ok: true, expired: expired.count, bonusExpired: bonusExpired.count, warned,
+    reengagedInactive, reengagedCompleted, broadcastSent,
+  })
 }

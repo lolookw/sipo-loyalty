@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const now = new Date()
   const campaigns = await prisma.campaign.findMany({
     where: { cafeId, active: true, startsAt: { lte: now }, endsAt: { gte: now } },
-    select: { id: true, name: true, type: true, multiplier: true, bonusPoints: true, endsAt: true },
+    select: { id: true, name: true, type: true, multiplier: true, bonusPoints: true, bonusStamps: true, endsAt: true },
     orderBy: { endsAt: 'asc' },
     take: 5,
   })

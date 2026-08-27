@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiCafe, apiError, normalizeEmail, apiBalance } from '@/lib/apiV1'
 import { cafeCanAcceptCustomer } from '@/lib/plan'
+import { grantSignupBonus } from '@/lib/signup'
 
 // GET /api/v1/customers?email=xxx — cliente y balance en el café de la key
 export async function GET(req: NextRequest) {
@@ -62,11 +63,24 @@ export async function POST(req: NextRequest) {
     update: name ? { name } : {},
     create: { email, name: name ?? email.split('@')[0] },
   })
-  const link = await prisma.customerCafe.upsert({
+
+  const preExisting = await prisma.customerCafe.findUnique({
+    where: { customerId_cafeId: { customerId: customer.id, cafeId: cafe.id } },
+    select: { id: true },
+  })
+
+  let link = await prisma.customerCafe.upsert({
     where: { customerId_cafeId: { customerId: customer.id, cafeId: cafe.id } },
     update: {},
     create: { customerId: customer.id, cafeId: cafe.id },
   })
+
+  if (!preExisting) {
+    try {
+      const grant = await grantSignupBonus(prisma, cafe, { id: link.id, customerId: customer.id })
+      if (grant) link = await prisma.customerCafe.findUniqueOrThrow({ where: { id: link.id } })
+    } catch (e) { console.error('signup bonus error:', e) } // nunca bloquea el alta
+  }
 
   return NextResponse.json({
     customer: { email: customer.email, name: customer.name },

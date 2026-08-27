@@ -4,16 +4,17 @@ const DAY = 24 * 60 * 60 * 1000
 
 export interface CampaignLike {
   name: string
-  type: string // "points_multiplier" | "stamp_multiplier" | "bonus_points"
+  type: string // "points_multiplier" | "stamp_multiplier" | "bonus_points" | "signup_bonus"
   multiplier: number | null
   bonusPoints: number | null
+  bonusStamps: number | null
   bonusExpiryDays: number
   startsAt: Date
   endsAt: Date
   active: boolean
 }
 
-export const CAMPAIGN_TYPES = ['points_multiplier', 'stamp_multiplier', 'bonus_points'] as const
+export const CAMPAIGN_TYPES = ['points_multiplier', 'stamp_multiplier', 'bonus_points', 'signup_bonus'] as const
 
 export function isCampaignLive(c: CampaignLike, now: Date): boolean {
   return c.active && c.startsAt <= now && c.endsAt >= now
@@ -51,6 +52,32 @@ export function bonusPointsFor(
     if (!campaign || b > (campaign.bonusPoints ?? 0)) campaign = c
   }
   return { bonus, expiryDays, campaign }
+}
+
+/**
+ * Bono de bienvenida: puntos y/o sellos por registrarse en el café durante la vigencia.
+ * Suma todas las campañas signup_bonus vivas (para puntos: al bucket de regalo, vence junto
+ * con el bonus_points más largo vivo; los sellos son sellos reales, se otorgan aparte y con cap).
+ */
+export function signupBonusFor(
+  campaigns: CampaignLike[],
+  now: Date,
+): { points: number; stamps: number; expiryDays: number; campaign: CampaignLike | null } {
+  let points = 0
+  let stamps = 0
+  let expiryDays = 0
+  let campaign: CampaignLike | null = null
+  for (const c of campaigns) {
+    if (c.type !== 'signup_bonus' || !isCampaignLive(c, now)) continue
+    const p = c.bonusPoints ?? 0
+    const s = c.bonusStamps ?? 0
+    if (p <= 0 && s <= 0) continue
+    points += p
+    stamps += s
+    if (p > 0) expiryDays = Math.max(expiryDays, c.bonusExpiryDays)
+    if (!campaign || p + s > (campaign.bonusPoints ?? 0) + (campaign.bonusStamps ?? 0)) campaign = c
+  }
+  return { points, stamps, expiryDays, campaign }
 }
 
 /** Sellos a otorgar en un stamp_add según campañas (mínimo 1, entero). */

@@ -25,10 +25,10 @@ export default async function AnalyticsPage({ params }: { params: Promise<{ cafe
     prisma.customerCafe.count({ where: { cafeId: cafe.id, createdAt: { gte: d30 } } }),
     prisma.transaction.aggregate({ where: { cafeId: cafe.id, createdAt: { gte: d30 }, amount: { not: null } }, _sum: { amount: true } }),
     prisma.transaction.count({ where: { cafeId: cafe.id, type: { in: ['stamp_redeem', 'points_redeem'] } } }),
-    // referral_reward se excluye: es un premio acreditado, no una visita real
-    prisma.transaction.groupBy({ by: ['customerId'], where: { cafeId: cafe.id, type: { not: 'referral_reward' } }, _count: { _all: true } }),
-    prisma.transaction.findMany({ where: { cafeId: cafe.id, type: { not: 'referral_reward' }, createdAt: { gte: d56 } }, select: { createdAt: true } }),
-    prisma.transaction.findMany({ where: { cafeId: cafe.id, type: { not: 'referral_reward' }, createdAt: { gte: d90 } }, select: { createdAt: true } }),
+    // referral_reward y signup_bonus se excluyen: son premios acreditados, no visitas reales
+    prisma.transaction.groupBy({ by: ['customerId'], where: { cafeId: cafe.id, type: { notIn: ['referral_reward', 'signup_bonus'] } }, _count: { _all: true } }),
+    prisma.transaction.findMany({ where: { cafeId: cafe.id, type: { notIn: ['referral_reward', 'signup_bonus'] }, createdAt: { gte: d56 } }, select: { createdAt: true } }),
+    prisma.transaction.findMany({ where: { cafeId: cafe.id, type: { notIn: ['referral_reward', 'signup_bonus'] }, createdAt: { gte: d90 } }, select: { createdAt: true } }),
   ])
 
   const recurring = countRecurring(recurringRows.map(r => r._count._all))

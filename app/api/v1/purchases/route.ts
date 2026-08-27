@@ -91,5 +91,6 @@ export async function POST(req: NextRequest) {
     message: result.message,
     campaign_applied: result.campaignApplied,
     referral_converted: result.referralConverted,
+    signup_bonus_granted: result.signupBonusGranted,
   })
 }

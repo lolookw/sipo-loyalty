@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getCafeIfAuthorized } from '@/lib/cafeAuth'
 import { cafeCanAcceptCustomer } from '@/lib/plan'
+import { searchCafeCustomers } from '@/lib/customerSearch'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -19,22 +20,7 @@ export async function GET(req: NextRequest) {
 
   // ── Autocomplete: ?search=xxx&cafeId=xxx ──────────────────────────────────
   if (search) {
-    const q = search.trim().toLowerCase()
-    if (q.length < 2) return NextResponse.json([])
-
-    const customers = await prisma.customer.findMany({
-      where: {
-        cafes: { some: { cafeId } },
-        OR: [
-          { email: { startsWith: q } },
-          { name: { contains: q, mode: 'insensitive' } },
-        ],
-      },
-      include: { cafes: { where: { cafeId } } },
-      orderBy: { name: 'asc' },
-      take: 6,
-    })
-
+    const customers = await searchCafeCustomers(prisma, cafeId, search)
     return NextResponse.json(
       customers.map(c => ({ ...c, loyalty: c.cafes[0] || null }))
     )

@@ -24,13 +24,18 @@ export default async function CafeAdminLayout({
 
   const cafe = await prisma.cafe.findUnique({
     where: { slug: cafeSlug },
-    select: { id: true, slug: true, name: true, primaryColor: true },
+    select: { id: true, slug: true, name: true, primaryColor: true, onboardingSeenAt: true },
   })
   if (!cafe) redirect('/')
 
   return (
     <div className="min-h-screen flex" style={{ background: '#FCFBF8' }}>
-      <AdminSidebar cafe={cafe} userName={session.user.name || ''} isSuperAdmin={role === 'superadmin'} />
+      <AdminSidebar
+        cafe={cafe}
+        userName={session.user.name || ''}
+        isSuperAdmin={role === 'superadmin'}
+        isOwner={role === 'owner'}
+      />
       <main className="flex-1 overflow-y-auto">{children}</main>
     </div>
   )

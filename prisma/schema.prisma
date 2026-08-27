@@ -53,6 +53,24 @@ model Cafe {
   customerLimit Int       @default(5)          // tope de clientes del plan gratuito (ignorado si permanente/activo)
   activatedAt   DateTime?                      // última activación por superadmin
 
+  // ── Guía de inicio (checklist de onboarding para el dueño) ──
+  // null = todavía no la abrió (dispara el aviso en el sidebar). Cafés existentes al momento de
+  // agregar esto se backfillean a la fecha del backfill para no mostrarles un aviso sorpresa.
+  onboardingSeenAt       DateTime?
+  onboardingSkippedSteps String?   // JSON array de keys de pasos marcados "no aplica" por el dueño
+
+  // ── Emails de reactivación (dos triggers independientes) ──────────────────
+  // Ambos apagados por default (@default(false)): ningún café existente empieza a mandar nada solo
+  // por agregar estas columnas. mensaje null = usa el default de marca definido en lib/reengagement.ts
+  // (se resuelve al leer, no se congela en el schema, así una mejora futura del copy default alcanza
+  // a los cafés que nunca lo personalizaron).
+  reengagementInactiveEnabled  Boolean   @default(false)
+  reengagementInactiveDays     Int       @default(15) // días desde el último sello
+  reengagementInactiveMessage  String?
+  reengagementCompletedEnabled Boolean   @default(false)
+  reengagementCompletedDays    Int       @default(3)  // días desde que la tarjeta quedó completa sin canjear
+  reengagementCompletedMessage String?
+
   owner    Owner    @relation(fields: [ownerId], references: [id])
   ownerId  String
 
@@ -63,6 +81,7 @@ model Cafe {
   campaigns Campaign[]
   referrals Referral[]
   apiKeys   ApiKey[]
+  broadcasts Broadcast[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -103,6 +122,7 @@ model Customer {
 
   cafes        CustomerCafe[]
   transactions Transaction[]
+  broadcastRecipients BroadcastRecipient[]
 }
 
 model CustomerOtp {
@@ -131,12 +151,27 @@ model CustomerCafe {
   stampsExpireAt     DateTime? // cuándo vencen los sellos activos (se renueva con cada sello nuevo)
   stampsExpiryWarned Boolean  @default(false) // ya se avisó del vencimiento próximo (evita spam)
 
+  // ── Reactivación: tracking para los 2 triggers de lib/purchase.ts + cron ──
+  // lastStampAt: se pisa en cada stamp_add. cardCompletedAt: se setea al cruzar stampsRequired por
+  // primera vez, se limpia al canjear. Los *SentAt son flags "ya avisado en esta racha" (mismo
+  // patrón que stampsExpiryWarned) — se limpian cuando la racha termina (nuevo sello / canje) para
+  // poder volver a avisar en la próxima racha de inactividad o de tarjeta completa.
+  lastStampAt                 DateTime?
+  cardCompletedAt              DateTime?
+  reengagementInactiveSentAt   DateTime?
+  reengagementCompletedSentAt  DateTime?
+
   // Puntos de regalo (campañas bonus_points). Bucket único con un solo vencimiento,
   // mismo patrón que los sellos: cada regalo nuevo renueva el deadline de todo el bucket.
   bonusPoints   Float     @default(0)
   bonusExpireAt DateTime?
 
   referralCode String? @unique // código para invitar amigos a este café (se genera al pedirlo)
+
+  // Difusión (mailing masivo del dueño). Por café, no global: un cliente puede cortar la difusión de
+  // un café y seguir recibiendo la de otro. No afecta emails transaccionales (OTP, vencimiento de
+  // sellos, reactivación) — esos no son marketing.
+  marketingOptOut Boolean @default(false)
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -181,16 +216,19 @@ model Reward {
   @@index([cafeId])
 }
 
-// Campañas del dueño: multiplicadores de puntos/sellos o puntos de regalo por compra,
-// con vigencia por fechas. Se aplican en /api/transaction al registrar la compra.
+// Campañas del dueño: multiplicadores de puntos/sellos, puntos de regalo por compra, o bono de
+// bienvenida por registrarse — todo con vigencia por fechas. Los tres primeros tipos se aplican
+// en el momento de la compra (lib/purchase.ts); signup_bonus se aplica al vincularse al café
+// por primera vez (lib/signup.ts), sea por la loyalty page, caja o API.
 model Campaign {
   id              String   @id @default(cuid())
   cafe            Cafe     @relation(fields: [cafeId], references: [id])
   cafeId          String
   name            String
-  type            String   // "points_multiplier" | "stamp_multiplier" | "bonus_points"
+  type            String   // "points_multiplier" | "stamp_multiplier" | "bonus_points" | "signup_bonus"
   multiplier      Float?   // para *_multiplier (ej: 2 = doble)
-  bonusPoints     Float?   // para bonus_points: pts de regalo por compra
+  bonusPoints     Float?   // para bonus_points/signup_bonus: pts de regalo
+  bonusStamps     Int?     // para signup_bonus: sellos de regalo al registrarse
   bonusExpiryDays Int      @default(30) // vigencia de los pts de regalo desde que se otorgan
   startsAt        DateTime
   endsAt          DateTime
@@ -215,6 +253,39 @@ model Referral {
 
   @@unique([cafeId, referredCustomerId]) // un cliente solo puede ser referido una vez por café
   @@index([cafeId, referrerCustomerId])
+}
+
+// Mailing de difusión del dueño a sus clientes registrados. Se materializa un BroadcastRecipient
+// por cliente NO opt-out al momento de componer (no en el momento de enviar) — así el cron solo
+// tiene que drenar "pendientes" en lotes, sin re-evaluar opt-outs a mitad de un envío en curso.
+model Broadcast {
+  id              String    @id @default(cuid())
+  cafe            Cafe      @relation(fields: [cafeId], references: [id])
+  cafeId          String
+  subject         String
+  message         String    // texto plano; se escapa y se inserta en la plantilla de marca al enviar
+  status          String    @default("pending") // "pending" | "sending" | "done"
+  totalRecipients Int       @default(0)
+  sentCount       Int       @default(0)
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+
+  recipients BroadcastRecipient[]
+
+  @@index([cafeId])
+  @@index([status])
+}
+
+model BroadcastRecipient {
+  id          String     @id @default(cuid())
+  broadcast   Broadcast  @relation(fields: [broadcastId], references: [id])
+  broadcastId String
+  customer    Customer   @relation(fields: [customerId], references: [id])
+  customerId  String
+  sentAt      DateTime? // null = pendiente; si el envío falla queda null y el cron reintenta solo
+
+  @@unique([broadcastId, customerId])
+  @@index([broadcastId, sentAt])
 }
 
 // Claves de la API pública v1 (integraciones ERP/POS por café).

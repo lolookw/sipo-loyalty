@@ -5,6 +5,7 @@
 import type { Cafe, CustomerCafe, PrismaClient, Transaction } from '@prisma/client'
 import { stampsToGrant, pointsToGrant, bonusPointsFor, splitRedeem, bonusExpiryDate, availableBonus } from './campaigns'
 import { convertPendingReferral } from './referrals'
+import { grantSignupBonus } from './signup'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -25,6 +26,7 @@ export type PurchaseResult =
       message: string
       campaignApplied: boolean
       referralConverted: boolean
+      signupBonusGranted: boolean
     }
 
 export async function executePurchase(db: PrismaClient, cafe: Cafe, input: PurchaseInput): Promise<PurchaseResult> {
@@ -36,14 +38,35 @@ export async function executePurchase(db: PrismaClient, cafe: Cafe, input: Purch
   const customer = await db.customer.findUnique({ where: { id: customerId }, select: { id: true } })
   if (!customer) return { ok: false, status: 404, error: 'Cliente no encontrado' }
 
-  const link = await db.customerCafe.upsert({
+  const preExisting = await db.customerCafe.findUnique({
+    where: { customerId_cafeId: { customerId, cafeId } },
+    select: { id: true },
+  })
+
+  let link = await db.customerCafe.upsert({
     where: { customerId_cafeId: { customerId, cafeId } },
     update: {},
     create: { customerId, cafeId },
   })
 
-  // Campañas vivas del café — solo pesan al sumar (el canje usa el bucket bonus ya acreditado)
   const now = new Date()
+
+  // Cliente recién vinculado a este café (alta desde caja o auto_register de la API) →
+  // aplica bono de bienvenida si hay una campaña signup_bonus viva. Nunca bloquea la compra.
+  let signupBonusGranted = false
+  if (!preExisting) {
+    try {
+      const grant = await grantSignupBonus(db, cafe, { id: link.id, customerId }, now)
+      if (grant) {
+        signupBonusGranted = true
+        link = await db.customerCafe.findUniqueOrThrow({ where: { id: link.id } })
+      }
+    } catch (e) {
+      console.error('signup bonus error:', e)
+    }
+  }
+
+  // Campañas vivas del café — solo pesan al sumar (el canje usa el bucket bonus ya acreditado)
   const campaigns = (type === 'stamp_add' || type === 'points_add')
     ? await db.campaign.findMany({
         where: { cafeId, active: true, startsAt: { lte: now }, endsAt: { gte: now } },
@@ -133,7 +156,10 @@ export async function executePurchase(db: PrismaClient, cafe: Cafe, input: Purch
       if (stampInc === 1) {
         const result = await tx.customerCafe.updateMany({
           where: { id: link.id, stamps: { lt: cafe.stampsRequired } },
-          data: { stamps: { increment: 1 }, totalStamps: { increment: 1 }, stampsExpireAt: stampExpiry, stampsExpiryWarned: false },
+          data: {
+            stamps: { increment: 1 }, totalStamps: { increment: 1 }, stampsExpireAt: stampExpiry, stampsExpiryWarned: false,
+            lastStampAt: now, reengagementInactiveSentAt: null,
+          },
         })
         if (result.count === 0) throw new Error('STAMP_CARD_FULL')
       } else {
@@ -143,16 +169,28 @@ export async function executePurchase(db: PrismaClient, cafe: Cafe, input: Purch
         const inc = Math.min(stampInc, cafe.stampsRequired - fresh.stamps)
         const result = await tx.customerCafe.updateMany({
           where: { id: link.id, stamps: fresh.stamps },
-          data: { stamps: { increment: inc }, totalStamps: { increment: inc }, stampsExpireAt: stampExpiry, stampsExpiryWarned: false },
+          data: {
+            stamps: { increment: inc }, totalStamps: { increment: inc }, stampsExpireAt: stampExpiry, stampsExpiryWarned: false,
+            lastStampAt: now, reengagementInactiveSentAt: null,
+          },
         })
         if (result.count === 0) throw new Error('CONCURRENT_RETRY')
         txData.stamps = inc // reflejar lo realmente otorgado (cap del tope)
       }
+      // Primera vez que cruza el tope: marca cuándo quedó completa (para el aviso de "vení a canjear").
+      // Guardado por cardCompletedAt:null → no se pisa en sucesivos stamp_add (bloqueados igual por STAMP_CARD_FULL).
+      await tx.customerCafe.updateMany({
+        where: { id: link.id, cardCompletedAt: null, stamps: { gte: cafe.stampsRequired } },
+        data: { cardCompletedAt: now },
+      })
 
     } else if (type === 'stamp_redeem') {
       const result = await tx.customerCafe.updateMany({
         where: { id: link.id, stamps: { gte: cafe.stampsRequired } },
-        data: { stamps: 0, stampsExpireAt: null, stampsExpiryWarned: false },
+        data: {
+          stamps: 0, stampsExpireAt: null, stampsExpiryWarned: false,
+          cardCompletedAt: null, reengagementCompletedSentAt: null,
+        },
       })
       if (result.count === 0) throw new Error('NOT_ENOUGH_STAMPS')
 
@@ -236,6 +274,7 @@ export async function executePurchase(db: PrismaClient, cafe: Cafe, input: Purch
     message = `✅ Recompensa canjeada: ${pointsRedeemedRewardName}`
   }
   if (referralConverted) message += ' · 🤝 Se acreditó el premio a quien lo invitó'
+  if (signupBonusGranted) message += ' · 🎉 Bono de bienvenida acreditado'
 
   return {
     ok: true,
@@ -244,5 +283,6 @@ export async function executePurchase(db: PrismaClient, cafe: Cafe, input: Purch
     message,
     campaignApplied: campaignNote !== '',
     referralConverted,
+    signupBonusGranted,
   }
 }

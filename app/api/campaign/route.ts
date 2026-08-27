@@ -10,6 +10,7 @@ type CampaignInput = {
   type?: string
   multiplier?: number | null
   bonusPoints?: number | null
+  bonusStamps?: number | null
   bonusExpiryDays?: number
   startsAt?: Date
   endsAt?: Date
@@ -30,16 +31,33 @@ function parseCampaignFields(body: Record<string, unknown>, partial: boolean): C
     out.type = String(body.type)
   } else if (!partial) return 'Falta el tipo'
 
-  if (body.multiplier !== undefined && body.multiplier !== null) {
-    const m = Number(body.multiplier)
-    if (!Number.isFinite(m) || m <= 1 || m > 10) return 'El multiplicador debe ser mayor a 1 (máx. 10)'
-    out.multiplier = m
+  // Nota: 'campo' in body distingue "no lo mandaron" (no tocar) de "lo mandaron en null"
+  // (limpiarlo a propósito — pasa al cambiar de tipo o destildar una opción del bono de bienvenida).
+  if ('multiplier' in body) {
+    if (body.multiplier === null) out.multiplier = null
+    else {
+      const m = Number(body.multiplier)
+      if (!Number.isFinite(m) || m <= 1 || m > 10) return 'El multiplicador debe ser mayor a 1 (máx. 10)'
+      out.multiplier = m
+    }
   }
 
-  if (body.bonusPoints !== undefined && body.bonusPoints !== null) {
-    const b = Number(body.bonusPoints)
-    if (!Number.isFinite(b) || b <= 0 || b > 100000) return 'Los puntos de regalo deben ser mayores a 0'
-    out.bonusPoints = b
+  if ('bonusPoints' in body) {
+    if (body.bonusPoints === null) out.bonusPoints = null
+    else {
+      const b = Number(body.bonusPoints)
+      if (!Number.isFinite(b) || b <= 0 || b > 100000) return 'Los puntos de regalo deben ser mayores a 0'
+      out.bonusPoints = b
+    }
+  }
+
+  if ('bonusStamps' in body) {
+    if (body.bonusStamps === null) out.bonusStamps = null
+    else {
+      const s = Math.floor(Number(body.bonusStamps))
+      if (!Number.isFinite(s) || s <= 0 || s > 50) return 'Los sellos de regalo deben ser entre 1 y 50'
+      out.bonusStamps = s
+    }
   }
 
   if (body.bonusExpiryDays !== undefined) {
@@ -63,11 +81,13 @@ function parseCampaignFields(body: Record<string, unknown>, partial: boolean): C
   return out
 }
 
-function typeValueError(fields: { type?: string; multiplier?: number | null; bonusPoints?: number | null }): string | null {
+function typeValueError(fields: { type?: string; multiplier?: number | null; bonusPoints?: number | null; bonusStamps?: number | null }): string | null {
   if ((fields.type === 'points_multiplier' || fields.type === 'stamp_multiplier') && !fields.multiplier)
     return 'Indicá el multiplicador (ej: 2 = doble)'
   if (fields.type === 'bonus_points' && !fields.bonusPoints)
     return 'Indicá cuántos puntos de regalo da la campaña'
+  if (fields.type === 'signup_bonus' && !fields.bonusPoints && !fields.bonusStamps)
+    return 'Indicá puntos y/o sellos de regalo por registrarse'
   return null
 }
 
@@ -109,6 +129,7 @@ export async function POST(req: NextRequest) {
       type: fields.type!,
       multiplier: fields.multiplier ?? null,
       bonusPoints: fields.bonusPoints ?? null,
+      bonusStamps: fields.bonusStamps ?? null,
       bonusExpiryDays: fields.bonusExpiryDays ?? 30,
       startsAt: fields.startsAt!,
       endsAt: fields.endsAt!,

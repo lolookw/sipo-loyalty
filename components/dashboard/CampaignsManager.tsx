@@ -7,9 +7,10 @@ import { Plus, Trash2, Edit3 } from 'lucide-react'
 interface Campaign {
   id: string
   name: string
-  type: string // "points_multiplier" | "stamp_multiplier" | "bonus_points"
+  type: string // "points_multiplier" | "stamp_multiplier" | "bonus_points" | "signup_bonus"
   multiplier: number | null
   bonusPoints: number | null
+  bonusStamps: number | null
   bonusExpiryDays: number
   startsAt: string
   endsAt: string
@@ -28,6 +29,7 @@ const TYPE_OPTIONS = [
   { value: 'points_multiplier', label: 'Multiplicar puntos', emoji: '✨', hint: 'ej: x2 puntos por compra' },
   { value: 'stamp_multiplier', label: 'Multiplicar sellos', emoji: '🔥', hint: 'ej: x2 sellos por visita' },
   { value: 'bonus_points', label: 'Puntos de regalo', emoji: '🎁', hint: 'pts extra por cada compra' },
+  { value: 'signup_bonus', label: 'Bono de bienvenida', emoji: '🎉', hint: 'pts y/o sellos por registrarse' },
 ]
 
 type FormState = {
@@ -35,6 +37,7 @@ type FormState = {
   type: string
   multiplier: number
   bonusPoints: number
+  bonusStamps: number
   bonusExpiryDays: number
   startsAt: string // yyyy-mm-dd
   endsAt: string
@@ -44,7 +47,7 @@ const emptyForm = (): FormState => {
   const today = new Date()
   const inAWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
   const iso = (d: Date) => d.toISOString().slice(0, 10)
-  return { name: '', type: 'points_multiplier', multiplier: 2, bonusPoints: 50, bonusExpiryDays: 30, startsAt: iso(today), endsAt: iso(inAWeek) }
+  return { name: '', type: 'points_multiplier', multiplier: 2, bonusPoints: 50, bonusStamps: 1, bonusExpiryDays: 30, startsAt: iso(today), endsAt: iso(inAWeek) }
 }
 
 function campaignStatus(c: Campaign): { label: string; live: boolean; done: boolean } {
@@ -58,6 +61,12 @@ function campaignStatus(c: Campaign): { label: string; live: boolean; done: bool
 function valueSummary(c: Campaign): string {
   if (c.type === 'points_multiplier') return `x${c.multiplier} puntos por compra`
   if (c.type === 'stamp_multiplier') return `x${c.multiplier} sellos por visita`
+  if (c.type === 'signup_bonus') {
+    const parts: string[] = []
+    if (c.bonusPoints) parts.push(`+${c.bonusPoints} pts`)
+    if (c.bonusStamps) parts.push(`+${c.bonusStamps} ${c.bonusStamps === 1 ? 'sello' : 'sellos'}`)
+    return `${parts.join(' y ')} al registrarse`
+  }
   return `+${c.bonusPoints} pts de regalo por compra · valen ${c.bonusExpiryDays} días`
 }
 
@@ -71,6 +80,8 @@ export default function CampaignsManager({ cafe, initialCampaigns }: { cafe: Caf
   const [formOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm())
+  const [signupWantsPoints, setSignupWantsPoints] = useState(true)
+  const [signupWantsStamps, setSignupWantsStamps] = useState(false)
   const [loading, setLoading] = useState(false)
   const primary = cafe.primaryColor
   const accent = cafe.accentColor
@@ -80,6 +91,8 @@ export default function CampaignsManager({ cafe, initialCampaigns }: { cafe: Caf
   function openCreate() {
     setEditingId(null)
     setForm(emptyForm())
+    setSignupWantsPoints(true)
+    setSignupWantsStamps(false)
     setFormOpen(true)
   }
 
@@ -90,21 +103,26 @@ export default function CampaignsManager({ cafe, initialCampaigns }: { cafe: Caf
       type: c.type,
       multiplier: c.multiplier ?? 2,
       bonusPoints: c.bonusPoints ?? 50,
+      bonusStamps: c.bonusStamps ?? 1,
       bonusExpiryDays: c.bonusExpiryDays,
       startsAt: c.startsAt.slice(0, 10),
       endsAt: c.endsAt.slice(0, 10),
     })
+    setSignupWantsPoints(c.type !== 'signup_bonus' || !!c.bonusPoints)
+    setSignupWantsStamps(c.type === 'signup_bonus' && !!c.bonusStamps)
     setFormOpen(true)
   }
 
   // El día de inicio arranca a las 00:00 y el de fin cierra a las 23:59 (hora local)
   function payloadFromForm() {
-    const isMult = form.type !== 'bonus_points'
+    const isMult = form.type === 'points_multiplier' || form.type === 'stamp_multiplier'
+    const isSignup = form.type === 'signup_bonus'
     return {
       name: form.name,
       type: form.type,
       multiplier: isMult ? form.multiplier : null,
-      bonusPoints: isMult ? null : form.bonusPoints,
+      bonusPoints: isMult ? null : (isSignup ? (signupWantsPoints ? form.bonusPoints : null) : form.bonusPoints),
+      bonusStamps: isSignup && signupWantsStamps ? form.bonusStamps : null,
       bonusExpiryDays: form.bonusExpiryDays,
       startsAt: new Date(`${form.startsAt}T00:00:00`).toISOString(),
       endsAt: new Date(`${form.endsAt}T23:59:59.999`).toISOString(),
@@ -113,6 +131,10 @@ export default function CampaignsManager({ cafe, initialCampaigns }: { cafe: Caf
 
   async function save() {
     if (!form.name.trim()) return
+    if (form.type === 'signup_bonus' && !signupWantsPoints && !signupWantsStamps) {
+      toast.error('Activá puntos y/o sellos de regalo')
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch('/api/campaign', {
@@ -152,6 +174,7 @@ export default function CampaignsManager({ cafe, initialCampaigns }: { cafe: Caf
 
   const visibleTypes = TYPE_OPTIONS.filter(t => {
     if (t.value === 'stamp_multiplier') return cafe.stampEnabled
+    if (t.value === 'signup_bonus') return cafe.stampEnabled || cafe.pointsEnabled
     return cafe.pointsEnabled
   })
 
@@ -209,7 +232,7 @@ export default function CampaignsManager({ cafe, initialCampaigns }: { cafe: Caf
               style={inputStyle}
             />
 
-            {form.type !== 'bonus_points' ? (
+            {(form.type === 'points_multiplier' || form.type === 'stamp_multiplier') && (
               <div className="flex items-center gap-3">
                 <span className="font-sans text-sm" style={{ color: '#9B9089' }}>x</span>
                 <input
@@ -226,7 +249,9 @@ export default function CampaignsManager({ cafe, initialCampaigns }: { cafe: Caf
                   {form.type === 'points_multiplier' ? 'los puntos de cada compra' : 'los sellos de cada visita'}
                 </span>
               </div>
-            ) : (
+            )}
+
+            {form.type === 'bonus_points' && (
               <div className="space-y-2.5">
                 <div className="flex items-center gap-3">
                   <input
@@ -251,6 +276,60 @@ export default function CampaignsManager({ cafe, initialCampaigns }: { cafe: Caf
                   />
                   <span className="font-sans text-sm" style={{ color: '#9B9089' }}>días de validez del regalo</span>
                 </div>
+              </div>
+            )}
+
+            {form.type === 'signup_bonus' && (
+              <div className="space-y-2.5">
+                <p className="font-sans text-xs" style={{ color: '#9B9089' }}>
+                  Se acredita una sola vez, cuando el cliente se registra por primera vez en tu café
+                  (por la página de fidelidad, en caja o por integraciones).
+                </p>
+                {cafe.pointsEnabled && (
+                  <label className="flex items-center gap-3">
+                    <input type="checkbox" checked={signupWantsPoints} onChange={e => setSignupWantsPoints(e.target.checked)} className="w-4 h-4" />
+                    <input
+                      type="number"
+                      min={1}
+                      disabled={!signupWantsPoints}
+                      value={form.bonusPoints}
+                      onChange={e => setForm({ ...form, bonusPoints: Number(e.target.value) })}
+                      className="w-28 px-3.5 py-2.5 rounded-xl font-sans outline-none text-sm disabled:opacity-40"
+                      style={inputStyle}
+                    />
+                    <span className="font-sans text-sm" style={{ color: '#9B9089' }}>pts de regalo al registrarse</span>
+                  </label>
+                )}
+                {cafe.stampEnabled && (
+                  <label className="flex items-center gap-3">
+                    <input type="checkbox" checked={signupWantsStamps} onChange={e => setSignupWantsStamps(e.target.checked)} className="w-4 h-4" />
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      disabled={!signupWantsStamps}
+                      value={form.bonusStamps}
+                      onChange={e => setForm({ ...form, bonusStamps: Number(e.target.value) })}
+                      className="w-28 px-3.5 py-2.5 rounded-xl font-sans outline-none text-sm disabled:opacity-40"
+                      style={inputStyle}
+                    />
+                    <span className="font-sans text-sm" style={{ color: '#9B9089' }}>sellos de regalo al registrarse</span>
+                  </label>
+                )}
+                {signupWantsPoints && (
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={form.bonusExpiryDays}
+                      onChange={e => setForm({ ...form, bonusExpiryDays: Number(e.target.value) })}
+                      className="w-28 px-3.5 py-2.5 rounded-xl font-sans outline-none text-sm"
+                      style={inputStyle}
+                    />
+                    <span className="font-sans text-sm" style={{ color: '#9B9089' }}>días de validez de los puntos</span>
+                  </div>
+                )}
               </div>
             )}
 

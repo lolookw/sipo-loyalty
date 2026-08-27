@@ -7,6 +7,7 @@ const Cropper = dynamic<any>(() => import('react-easy-crop'), { ssr: false })
 import toast from 'react-hot-toast'
 import { Save, ExternalLink, Plus, Trash2, UserPlus, Key, Sparkles, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { generateAccentOptions } from '@/lib/utils'
+import { DEFAULT_INACTIVE_MESSAGE, DEFAULT_COMPLETED_MESSAGE } from '@/lib/reengagement'
 
 type CropArea = { x: number; y: number; width: number; height: number }
 
@@ -66,6 +67,12 @@ interface Cafe {
   referralEnabled: boolean
   referralRewardType: string
   referralRewardAmount: number
+  reengagementInactiveEnabled: boolean
+  reengagementInactiveDays: number
+  reengagementInactiveMessage: string | null
+  reengagementCompletedEnabled: boolean
+  reengagementCompletedDays: number
+  reengagementCompletedMessage: string | null
 }
 
 interface StaffMember {
@@ -312,6 +319,12 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
     referralEnabled: cafe.referralEnabled,
     referralRewardType: cafe.referralRewardType,
     referralRewardAmount: cafe.referralRewardAmount,
+    reengagementInactiveEnabled: cafe.reengagementInactiveEnabled,
+    reengagementInactiveDays: cafe.reengagementInactiveDays,
+    reengagementInactiveMessage: cafe.reengagementInactiveMessage ?? DEFAULT_INACTIVE_MESSAGE,
+    reengagementCompletedEnabled: cafe.reengagementCompletedEnabled,
+    reengagementCompletedDays: cafe.reengagementCompletedDays,
+    reengagementCompletedMessage: cafe.reengagementCompletedMessage ?? DEFAULT_COMPLETED_MESSAGE,
   })
   const [customLinks, setCustomLinks] = useState<{ label: string; url: string }[]>(
     cafe.customLinks ? JSON.parse(cafe.customLinks) : []
@@ -733,6 +746,81 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
               </div>
             </div>
           )}
+        </Section>
+
+        <Section title="Reactivación de clientes">
+          <p className="font-sans text-xs mb-4" style={{ color: '#9B9089' }}>
+            Emails automáticos para que tus clientes vuelvan. Cada uno se apaga por default y se manda una sola vez por racha — si el cliente vuelve a sumar sellos o canjea, se puede volver a avisar más adelante.
+          </p>
+          <div className="space-y-3">
+            <div className="p-4 rounded-xl" style={{ background: '#FCFBF8', border: '1px solid #F6F0E8' }}>
+              <Toggle
+                checked={form.reengagementInactiveEnabled}
+                onChange={v => set('reengagementInactiveEnabled', v)}
+                label="Avisar por inactividad"
+                primaryColor={form.primaryColor}
+              />
+              {form.reengagementInactiveEnabled && (
+                <div className="mt-3 space-y-3 pt-3" style={{ borderTop: '1px solid #E9DED1' }}>
+                  <Field label="Días desde el último sello">
+                    <input
+                      type="number" min={1} max={365} step={1}
+                      value={form.reengagementInactiveDays}
+                      onChange={e => set('reengagementInactiveDays', parseInt(e.target.value) || 1)}
+                      className="w-24 px-3.5 py-2.5 rounded-xl font-sans outline-none text-sm transition-colors"
+                      style={sInputStyle}
+                    />
+                    {form.stampExpiryDays > 0 && (
+                      <p className="font-sans text-xs mt-1" style={{ color: '#9B9089' }}>
+                        Como tenés vencimiento de sellos activado, mientras a un cliente le corra esa cuenta regresiva no le llega este aviso — le llega el de sellos por vencer en su lugar.
+                      </p>
+                    )}
+                  </Field>
+                  <Field label="Mensaje">
+                    <textarea
+                      value={form.reengagementInactiveMessage ?? ''}
+                      onChange={e => set('reengagementInactiveMessage', e.target.value)}
+                      rows={3}
+                      maxLength={600}
+                      className="w-full px-3.5 py-2.5 rounded-xl font-sans outline-none text-sm transition-colors resize-none"
+                      style={sInputStyle}
+                    />
+                  </Field>
+                </div>
+              )}
+            </div>
+            <div className="p-4 rounded-xl" style={{ background: '#FCFBF8', border: '1px solid #F6F0E8' }}>
+              <Toggle
+                checked={form.reengagementCompletedEnabled}
+                onChange={v => set('reengagementCompletedEnabled', v)}
+                label="Avisar por tarjeta completa sin canjear"
+                primaryColor={form.primaryColor}
+              />
+              {form.reengagementCompletedEnabled && (
+                <div className="mt-3 space-y-3 pt-3" style={{ borderTop: '1px solid #E9DED1' }}>
+                  <Field label="Días desde que se completó">
+                    <input
+                      type="number" min={1} max={365} step={1}
+                      value={form.reengagementCompletedDays}
+                      onChange={e => set('reengagementCompletedDays', parseInt(e.target.value) || 1)}
+                      className="w-24 px-3.5 py-2.5 rounded-xl font-sans outline-none text-sm transition-colors"
+                      style={sInputStyle}
+                    />
+                  </Field>
+                  <Field label="Mensaje">
+                    <textarea
+                      value={form.reengagementCompletedMessage ?? ''}
+                      onChange={e => set('reengagementCompletedMessage', e.target.value)}
+                      rows={3}
+                      maxLength={600}
+                      className="w-full px-3.5 py-2.5 rounded-xl font-sans outline-none text-sm transition-colors resize-none"
+                      style={sInputStyle}
+                    />
+                  </Field>
+                </div>
+              )}
+            </div>
+          </div>
         </Section>
 
         <Section title="Integraciones (API)">

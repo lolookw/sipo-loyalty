@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { signCustomerToken, verifyCustomerToken, extractBearerToken } from '@/lib/customerToken'
 import { cafeCanAcceptCustomer } from '@/lib/plan'
 import { attachReferral, ensureReferralCode } from '@/lib/referrals'
+import { grantSignupBonus } from '@/lib/signup'
 
 // GET /api/customer/public?email=xxx&cafeId=xxx  — requires customer JWT
 export async function GET(req: NextRequest) {
@@ -108,10 +109,17 @@ export async function POST(req: NextRequest) {
     if (refCode) link = { ...link, referralCode: refCode }
   }
 
-  // Vino con código de invitación y es realmente nuevo en el café → referido pendiente
-  if (!preExisting && typeof ref === 'string' && ref.trim()) {
-    try { await attachReferral(prisma, { cafeId, code: ref, referredCustomerId: customer.id }) }
-    catch (e) { console.error('referral attach error:', e) } // nunca bloquea el alta
+  if (!preExisting) {
+    // Vino con código de invitación y es realmente nuevo en el café → referido pendiente
+    if (typeof ref === 'string' && ref.trim()) {
+      try { await attachReferral(prisma, { cafeId, code: ref, referredCustomerId: customer.id }) }
+      catch (e) { console.error('referral attach error:', e) } // nunca bloquea el alta
+    }
+    // Campaña de bono de bienvenida vigente → puntos y/o sellos de regalo
+    try {
+      const grant = await grantSignupBonus(prisma, cafe, { id: link.id, customerId: customer.id })
+      if (grant) link = { ...link, ...(await prisma.customerCafe.findUniqueOrThrow({ where: { id: link.id } })) }
+    } catch (e) { console.error('signup bonus error:', e) } // nunca bloquea el alta
   }
 
   const customerToken = await signCustomerToken(normalizedEmail)
