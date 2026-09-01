@@ -6,7 +6,7 @@ import BillingSection from './BillingSection'
 import dynamic from 'next/dynamic'
 const Cropper = dynamic<any>(() => import('react-easy-crop'), { ssr: false })
 import toast from 'react-hot-toast'
-import { Save, ExternalLink, Plus, Trash2, UserPlus, Key, Sparkles, Upload, X, ZoomIn, ZoomOut, AlertTriangle } from 'lucide-react'
+import { Save, ExternalLink, Plus, Trash2, UserPlus, Key, Sparkles, Upload, X, ZoomIn, ZoomOut, AlertTriangle, Printer } from 'lucide-react'
 import { generateAccentOptions } from '@/lib/utils'
 import { DEFAULT_INACTIVE_MESSAGE, DEFAULT_COMPLETED_MESSAGE } from '@/lib/reengagement'
 import type { PlanTiers } from '@/lib/plans'
@@ -503,6 +503,26 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
               <div className="font-sans text-xs font-medium" style={{ color: '#43352C' }}>Página principal</div>
               <div className="font-mono text-xs" style={{ color: '#9B9089' }}>/{cafe.slug}</div>
             </div>
+          </div>
+          <div
+            className="mt-5 flex flex-col sm:flex-row sm:items-center gap-4 rounded-2xl p-4"
+            style={{ background: '#F6F0E8', border: '1px solid #E9DED1' }}
+          >
+            <div className="flex-1">
+              <div className="font-sans text-sm font-semibold" style={{ color: '#43352C' }}>Cartel para el mostrador</div>
+              <p className="font-sans text-xs mt-1 leading-relaxed" style={{ color: '#6B6B6B' }}>
+                Generá una versión plana o autoportante con tu logo, colores y QR. Usa la última configuración guardada.
+              </p>
+            </div>
+            <a
+              href={`/${cafe.slug}/cartel`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-sans font-semibold text-white text-xs hover:opacity-90 transition-opacity"
+              style={{ background: form.primaryColor }}
+            >
+              <Printer size={14} /> Preparar cartel
+            </a>
           </div>
         </div>
 
