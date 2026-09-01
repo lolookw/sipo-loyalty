@@ -61,6 +61,13 @@ interface SignDraft {
   showLogo: boolean
   /** Multiplicador del tamaño máximo del logo (1 = tamaño por defecto). */
   logoScale: number
+  /**
+   * Recorta el logo en círculo. Apagado por defecto para no cambiar lo ya impreso.
+   * Sirve porque el logo se guarda como JPEG cuadrado con relleno blanco: en la app siempre se ve
+   * dentro de un círculo, pero el cartel es el único lugar que lo muestra entero, así que aparecen
+   * unas esquinas blancas que el dueño nunca eligió.
+   */
+  logoRounded: boolean
 }
 
 function defaultDraft(cafe: Props['cafe']): SignDraft {
@@ -72,18 +79,23 @@ function defaultDraft(cafe: Props['cafe']): SignDraft {
     accentColor: cafe.accentColor,
     showLogo: !!cafe.logoUrl,
     logoScale: 1,
+    logoRounded: false,
   }
 }
 
 const HEX = /^#[0-9a-fA-F]{6}$/
 
-function CafeIdentity({ cafe, showLogo, compact = false }: { cafe: Props['cafe']; showLogo: boolean; compact?: boolean }) {
+function CafeIdentity({ cafe, draft, compact = false }: { cafe: Props['cafe']; draft: SignDraft; compact?: boolean }) {
   return (
     <div className={`cafe-identity ${compact ? 'cafe-identity--compact' : ''}`}>
-      {cafe.logoUrl && showLogo && (
-        <div className="cafe-logo-safe">
+      {cafe.logoUrl && draft.showLogo && (
+        <div className={`cafe-logo-safe ${draft.logoRounded ? 'cafe-logo-safe--round' : ''}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={cafe.logoUrl} alt={`Logo de ${cafe.name}`} className="cafe-logo" />
+          <img
+            src={cafe.logoUrl}
+            alt={`Logo de ${cafe.name}`}
+            className={`cafe-logo ${draft.logoRounded ? 'cafe-logo--round' : ''}`}
+          />
         </div>
       )}
       <div className="cafe-name">{cafe.name}</div>
@@ -124,7 +136,7 @@ function CustomerMessage({ draft, url, compact = false }: { draft: SignDraft; ur
 function CashierFace({ cafe, draft }: { cafe: Props['cafe']; draft: SignDraft }) {
   return (
     <div className="cashier-face-inner">
-      <CafeIdentity cafe={cafe} showLogo={draft.showLogo} compact />
+      <CafeIdentity cafe={cafe} draft={draft} compact />
       <div className="cashier-copy">
         <div className="eyebrow">ESTE LADO MIRA A LA CAJA</div>
         <h2>Ayudalos a dar el primer paso.</h2>
@@ -145,7 +157,7 @@ function TentSheet({ cafe, draft, url }: { cafe: Props['cafe']; draft: SignDraft
       <div className="fold-line"><span>PLEGAR</span></div>
       <section className="tent-panel tent-customer">
         <div className="tent-customer-inner">
-          <CafeIdentity cafe={cafe} showLogo={draft.showLogo} compact />
+          <CafeIdentity cafe={cafe} draft={draft} compact />
           <CustomerMessage draft={draft} url={url} compact />
           <SipoCredit />
         </div>
@@ -172,7 +184,7 @@ function FlatSheet({ cafe, draft, url }: { cafe: Props['cafe']; draft: SignDraft
     <div className="print-sheet flat-sheet" aria-label="Cartel plano A4">
       <div className="flat-accent" />
       <div className="flat-content">
-        <CafeIdentity cafe={cafe} showLogo={draft.showLogo} />
+        <CafeIdentity cafe={cafe} draft={draft} />
         <CustomerMessage draft={draft} url={url} />
         <SipoCredit />
       </div>
@@ -289,6 +301,15 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
                       aria-label="Tamaño del logo"
                     />
                     <output>{Math.round(draft.logoScale * 100)}%</output>
+                    <label className="tweak-check">
+                      <input
+                        type="checkbox"
+                        checked={draft.logoRounded}
+                        disabled={!draft.showLogo}
+                        onChange={e => set('logoRounded', e.target.checked)}
+                      />
+                      Recortar en círculo
+                    </label>
                   </div>
                 </label>
               )}
@@ -351,7 +372,9 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
         .tweak-wide { grid-column: 1 / -1; }
         .tweak-color input[type=color] { width: 54px; height: 34px; padding: 0; border: 1px solid #e0d3c4; border-radius: 9px; background: white; cursor: pointer; }
         .tweak-logo > div { display: flex; align-items: center; gap: 14px; }
-        .tweak-check { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; color: #43352c; font: 500 12.5px var(--font-sans); }
+        /* Los checkbox son labels anidados dentro de otro label, y .tweak-grid label les imponia
+           direccion columna: la etiqueta caia debajo de la casilla. Selector mas especifico. */
+        .tweak-grid .tweak-check { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; flex: 0 0 auto; color: #43352c; font: 500 12.5px var(--font-sans); }
         .tweak-check input { width: 15px; height: 15px; accent-color: #43352c; }
         .tweak-logo input[type=range] { flex: 1; min-width: 120px; accent-color: #43352c; }
         .tweak-logo input[type=range]:disabled { opacity: .4; }
@@ -387,6 +410,10 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
            palabra mas larga del nombre, asi que ningun tope fijo alcanza para todos los casos. */
         .tent-cashier .cafe-identity { flex-wrap: wrap; }
         .cafe-name { min-width: 0; }
+        /* El recorte circular fuerza caja cuadrada: si no, un logo apaisado saldria elipse. Con
+           object-fit adentro no se recorta nada del logo, solo se redondea el marco. */
+        .cafe-logo--round { aspect-ratio: 1; width: auto; border-radius: 50%; }
+        .cafe-logo-safe--round { border-radius: 50%; }
         .cafe-name { max-width: 150mm; color: var(--primary-on-light); font: 600 13mm/.95 var(--font-serif); letter-spacing: -.035em; }
         .cafe-identity--compact .cafe-name { max-width: 115mm; font-size: 7.2mm; }
         .customer-message { display: flex; flex-direction: column; align-items: center; gap: 10mm; text-align: center; }
@@ -413,6 +440,9 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
         .cashier-face-inner { height: 100%; display: grid; grid-template-columns: 55mm 1fr; grid-template-rows: 1fr auto; align-items: center; gap: 5mm 9mm; transform: rotate(180deg); }
         .tent-cashier .cafe-name { color: var(--primary-text); }
         .tent-cashier .cafe-logo-safe { padding: 1.5mm 2mm; border-radius: 2mm; background: #fff; }
+        /* Tiene que ir DESPUES de la regla de arriba: misma especificidad, gana la ultima. Y el
+           padding se empareja para que el respaldo sea un circulo y no una elipse. */
+        .tent-cashier .cafe-logo-safe--round { padding: 2mm; border-radius: 50%; }
         .cashier-copy .eyebrow { color: var(--accent-on-primary); opacity: .82; }
         .cashier-copy h2 { margin: 0; color: var(--primary-text); font: italic 600 8.5mm/.98 var(--font-serif); letter-spacing: -.03em; }
         .cashier-copy p { margin: 2.5mm 0 0; max-width: 105mm; color: var(--primary-text); opacity: .82; font: 500 3.4mm/1.45 var(--font-sans); }
@@ -423,7 +453,11 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
         .tent-customer-inner { height: 100%; display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto 1fr; gap: 4mm 8mm; align-items: center; }
         .tent-customer-inner > .cafe-identity { grid-column: 1 / -1; justify-self: center; }
         .tent-customer-inner > .customer-message { grid-column: 1 / -1; align-self: center; }
-        .tent-customer-inner > .sipo-credit { display: none; }
+        /* En la cara que mira al cliente el credito va a la esquina inferior derecha, fuera del
+           flujo: la hoja ya esta apretada y meterlo en la grilla empujaba el QR hacia arriba. Va a
+           9mm y no pegado al borde porque el pliegue cae justo ahi, y un texto sobre el doblez se
+           quiebra al plegar. */
+        .tent-customer-inner > .sipo-credit { position: absolute; right: 9mm; bottom: 9mm; }
         .fold-line { position: absolute; left: 0; z-index: 4; width: 100%; height: 0; border-top: .35mm dashed rgba(67,53,44,.48); }
         .fold-line span { position: absolute; right: 4mm; top: -2.5mm; padding: 0 1.4mm; color: #766a61; background: #f8f3ec; font: 700 2.2mm var(--font-sans); letter-spacing: .12em; }
         .tent-sheet > .fold-line:nth-of-type(1) { top: 95mm; }
