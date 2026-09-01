@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomInt } from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { Resend } from 'resend'
+import { otpSendDecision, OTP_UNKNOWN_EMAIL_HOURLY_CAP } from '@/lib/otpLimits'
+
+const HOUR = 60 * 60 * 1000
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -25,14 +28,47 @@ export async function POST(req: NextRequest) {
   if (!EMAIL_REGEX.test(normalizedEmail))
     return NextResponse.json({ error: 'Email inválido' }, { status: 400 })
 
-  // Rate limit: max 5 envíos por email en los últimos 60 minutos
-  const recentSends = await prisma.customerOtp.count({
-    where: {
-      email: normalizedEmail,
-      createdAt: { gt: new Date(Date.now() - 60 * 60 * 1000) },
-    },
+  const desde = new Date(Date.now() - HOUR)
+
+  // Dos límites, ver lib/otpLimits.ts: uno por dirección (hostigamiento a una persona) y otro
+  // sobre la dispersión de direcciones desconocidas (alguien rociando mails inventados para
+  // quemar la cuota de Resend, que es compartida por toda la plataforma incluido este login).
+  const [recentSends, known] = await Promise.all([
+    prisma.customerOtp.count({ where: { email: normalizedEmail, createdAt: { gt: desde } } }),
+    prisma.customer.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
+  ])
+
+  // Solo se paga esta consulta cuando la dirección es desconocida: a un cliente que ya existe no
+  // lo frena nunca. El `take` la deja acotada — alcanza con saber si pasó el tope, no cuánto.
+  let distinctEmailsLastHour: number | undefined
+  if (!known) {
+    const grupos = await prisma.customerOtp.groupBy({
+      by: ['email'],
+      where: { createdAt: { gt: desde } },
+      orderBy: { email: 'asc' },
+      take: OTP_UNKNOWN_EMAIL_HOURLY_CAP + 1,
+    })
+    distinctEmailsLastHour = grupos.length
+  }
+
+  const decision = otpSendDecision({
+    isKnownCustomer: !!known,
+    sendsForThisEmailLastHour: recentSends,
+    distinctEmailsLastHour,
   })
-  if (recentSends >= 5) {
+
+  if (!decision.ok) {
+    if (decision.reason === 'unknown_flood') {
+      // Queda registrado para poder verlo en los logs si alguna vez salta de verdad. El mensaje al
+      // usuario es genérico a propósito: no tiene por qué explicarle el mecanismo a quien lo probó.
+      console.warn(
+        `OTP: tope de direcciones nuevas alcanzado (${distinctEmailsLastHour} distintas en la última hora)`,
+      )
+      return NextResponse.json(
+        { error: 'Estamos recibiendo muchas solicitudes en este momento. Probá de nuevo en unos minutos.' },
+        { status: 429 },
+      )
+    }
     return NextResponse.json(
       { error: 'Demasiados intentos. Esperá unos minutos antes de pedir otro código.' },
       { status: 429 },
