@@ -33,18 +33,20 @@ export default withAuth(
       }
     }
 
-    // /dashboard/* es el panel viejo, anterior a /[cafeSlug]/admin. Sigue existiendo pero quedó
-    // atrás: no tiene campañas, referidos, difusión, analítica ni facturación, y su pantalla de
-    // configuración recibe la lista de cajeros vacía (el dueño podía pensar que se le borraron).
-    // Encima estaba fuera del matcher, así que ahí NO corría el "cambiá tu contraseña temporal".
-    // /login manda a todo el mundo acá, así que cada rol se deriva a su panel real.
+    // /dashboard ya no tiene páginas propias: era el panel viejo, anterior a /[cafeSlug]/admin,
+    // y se retiró (no tenía campañas, referidos, difusión, analítica ni facturación, y su
+    // configuración mostraba la lista de cajeros vacía). Lo que queda es este ruteo, que sirve
+    // para dos cosas: es el destino neutro al que /login manda después de autenticar, y sostiene
+    // los links y favoritos viejos. Como no hay página detrás, TODA rama tiene que redirigir.
     if (pathname === '/dashboard' || pathname.startsWith('/dashboard/')) {
-      if (token?.role === 'superadmin') return NextResponse.redirect(new URL('/admin', req.url))
-      if (token?.cafeSlug) {
+      if (!token) return NextResponse.redirect(new URL('/login', req.url))
+      if (token.role === 'superadmin') return NextResponse.redirect(new URL('/admin', req.url))
+      if (token.cafeSlug) {
         const dest = token.role === 'cashier' ? 'caja' : 'admin'
         return NextResponse.redirect(new URL(`/${token.cafeSlug}/${dest}`, req.url))
       }
-      if (!token) return NextResponse.redirect(new URL('/login', req.url))
+      // Sesión sin café (no debería pasar: un alta siempre crea café y dueño juntos).
+      return NextResponse.redirect(new URL('/', req.url))
     }
 
     // /[cafeSlug]/caja/* → cajero, owner o superadmin de ese café

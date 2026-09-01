@@ -23,6 +23,9 @@ export default function LoginForm() {
       setLoading(false)
     } else {
       toast.success('¡Bienvenido/a!')
+      // Destino neutro: acá no hay página, el middleware resuelve a qué panel va cada rol
+      // (superadmin → /admin, dueño → /[cafe]/admin, cajero → /[cafe]/caja). El formulario no
+      // conoce el rol todavía, y así la regla de "quién va a dónde" vive en un solo lugar.
       router.push('/dashboard')
     }
   }

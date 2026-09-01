@@ -316,7 +316,6 @@ Important safeguards implemented in the app:
 
 - Convert remaining `<img>` usages to `next/image` where it makes sense.
 - Expand automated test coverage around the public API and the scheduled expiration job.
-- Retire the legacy `/dashboard` panel, superseded by the per-café `/:cafeSlug/admin` one.
 - Webhook/POS bridge integrations beyond the direct REST API (in progress for a specific POS partner).
 - Tiered loyalty levels (bronze/silver/gold) — deliberately left out so far in favor of simpler stamps/points rules.
 
