@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn } from 'next-auth/react'
+import { signIn, getSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
@@ -21,13 +21,18 @@ export default function LoginForm() {
     if (result?.error) {
       toast.error('Email o contraseña incorrectos')
       setLoading(false)
-    } else {
-      toast.success('¡Bienvenido/a!')
-      // Destino neutro: acá no hay página, el middleware resuelve a qué panel va cada rol
-      // (superadmin → /admin, dueño → /[cafe]/admin, cajero → /[cafe]/caja). El formulario no
-      // conoce el rol todavía, y así la regla de "quién va a dónde" vive en un solo lugar.
-      router.push('/dashboard')
+      return
     }
+    toast.success('¡Bienvenido/a!')
+    // El rol recién se conoce después de autenticar, así que se lee la sesión y se va derecho al
+    // panel que corresponde. Antes esto empujaba a /dashboard, el panel viejo: los cajeros y el
+    // superadmin caían en una pantalla vacía y los dueños en una copia desactualizada del suyo.
+    const session = await getSession()
+    const role = session?.user?.role
+    const slug = session?.user?.cafeSlug
+    if (role === 'superadmin') router.push('/admin')
+    else if (slug) router.push(role === 'cashier' ? `/${slug}/caja` : `/${slug}/admin`)
+    else router.push('/')
   }
 
   return (

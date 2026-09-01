@@ -6,7 +6,7 @@ import BillingSection from './BillingSection'
 import dynamic from 'next/dynamic'
 const Cropper = dynamic<any>(() => import('react-easy-crop'), { ssr: false })
 import toast from 'react-hot-toast'
-import { Save, ExternalLink, Plus, Trash2, UserPlus, Key, Sparkles, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { Save, ExternalLink, Plus, Trash2, UserPlus, Key, Sparkles, Upload, X, ZoomIn, ZoomOut, AlertTriangle } from 'lucide-react'
 import { generateAccentOptions } from '@/lib/utils'
 import { DEFAULT_INACTIVE_MESSAGE, DEFAULT_COMPLETED_MESSAGE } from '@/lib/reengagement'
 import type { PlanTiers } from '@/lib/plans'
@@ -100,6 +100,8 @@ interface Props {
   apiAllowed: boolean
   tiers: PlanTiers
   ownerEmail: string | null
+  /** Cuántos clientes tienen cada cantidad de sellos — para el aviso al bajar el tope. */
+  stampHistogram: { stamps: number; count: number }[]
 }
 
 // ── Shared input style ─────────────────────────────────────────────────────
@@ -306,7 +308,7 @@ function ImageUpload({
   )
 }
 
-export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdmin, apiAllowed, tiers, ownerEmail }: Props) {
+export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdmin, apiAllowed, tiers, ownerEmail, stampHistogram }: Props) {
   const [form, setForm] = useState({
     name: cafe.name,
     description: cafe.description || '',
@@ -356,6 +358,13 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
   function set(key: string, value: unknown) {
     setForm(prev => ({ ...prev, [key]: value }))
   }
+
+  // Clientes que hoy tienen MÁS sellos que el tope elegido: son los que perderían el excedente.
+  // Se calcula sobre el histograma que vino del servidor, sin pedirle nada en cada tecla.
+  const clientesConExcedente = stampHistogram
+    .filter(g => g.stamps > form.stampsRequired)
+    .reduce((n, g) => n + g.count, 0)
+  const maxSellosActuales = stampHistogram.reduce((m, g) => Math.max(m, g.stamps), 0)
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -679,6 +688,26 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
                         style={sInputStyle}
                       />
                     </Field>
+                    {/* Canjear deja la tarjeta en 0, no resta: si bajás el número, a quien ya tenga
+                        más sellos que el nuevo tope se le pierde el excedente al canjear. Nada
+                        reescribe las tarjetas existentes cuando cambiás este valor, así que el
+                        efecto es invisible salvo que se avise acá. */}
+                    {clientesConExcedente > 0 && (
+                      <div
+                        className="flex items-start gap-2 p-3 rounded-xl"
+                        style={{ background: '#FDF6EC', border: '1px solid #EBD9BE' }}
+                      >
+                        <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#B98A2E' }} />
+                        <p className="font-sans text-xs leading-relaxed" style={{ color: '#7A6034' }}>
+                          {clientesConExcedente === 1
+                            ? 'Hay 1 cliente con más sellos'
+                            : `Hay ${clientesConExcedente} clientes con más sellos`}{' '}
+                          que este número (hasta {maxSellosActuales}). Al canjear, la tarjeta vuelve
+                          a cero: el excedente <strong>no pasa</strong> a la tarjeta siguiente.
+                          {' '}Si guardás así, esos sellos de más se pierden cuando canjeen.
+                        </p>
+                      </div>
+                    )}
                     <Field label="Recompensa al completar">
                       <SInput value={form.stampReward} onChange={v => set('stampReward', v)} placeholder="1 café gratis" />
                     </Field>

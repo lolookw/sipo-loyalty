@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   // Preferir el match por preapproval_id (más confiable, no depende de que external_reference se
   // haya propagado del preapproval al invoice/pago) y caer a external_reference si no vino.
-  const select = { id: true, activeUntil: true, pendingSubscriptionTier: true, mpLastProcessedPaymentId: true }
+  const select = { id: true, activeUntil: true, pendingSubscriptionTier: true, mpLastProcessedPaymentId: true, billingAnchorDay: true }
   const cafe = charge.preapprovalId
     ? await prisma.cafe.findFirst({ where: { mpPreapprovalId: charge.preapprovalId }, select })
     : charge.externalReference

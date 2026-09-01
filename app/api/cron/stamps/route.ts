@@ -16,6 +16,7 @@ import { getEffectivePlan, tierLabel } from '@/lib/planStatus'
 import { SELLABLE_TIERS, type PlanTier } from '@/lib/plans'
 import { getPlanTiers } from '@/lib/planTiers'
 import { getPlatformConfig } from '@/lib/platformConfig'
+import { addMonths } from '@/lib/dates'
 
 const DAY = 24 * 60 * 60 * 1000
 const WARN_WINDOW = 7 * DAY // avisar cuando faltan <= 7 días
@@ -443,7 +444,7 @@ export async function GET(req: NextRequest) {
       pendingSubscriptionTier: { not: null },
       pendingSubscriptionAt: { lt: new Date(now.getTime() - PENDING_SUBSCRIPTION_TIMEOUT_HOURS * 60 * 60 * 1000) },
     },
-    select: { id: true, mpPreapprovalId: true, activeUntil: true, pendingSubscriptionTier: true, mpLastProcessedPaymentId: true },
+    select: { id: true, mpPreapprovalId: true, activeUntil: true, pendingSubscriptionTier: true, mpLastProcessedPaymentId: true, billingAnchorDay: true },
   })
   for (const c of stale) {
     if (c.mpPreapprovalId) {
@@ -476,7 +477,10 @@ export async function GET(req: NextRequest) {
     select: {
       id: true, name: true, planTier: true,
       referredByCafe: {
-        select: { id: true, name: true, isPermanent: true, planTier: true, activeUntil: true, owner: { select: { email: true } } },
+        select: {
+          id: true, name: true, isPermanent: true, planTier: true, activeUntil: true,
+          billingAnchorDay: true, owner: { select: { email: true } },
+        },
       },
     },
   })
@@ -489,8 +493,8 @@ export async function GET(req: NextRequest) {
     // como acreditado igual para no reevaluarlo en cada corrida.
     const aplica = !padrino.isPermanent && padrino.planTier !== 'grandfathered'
     if (aplica) {
-      const desde = padrino.activeUntil && padrino.activeUntil.getTime() > now.getTime() ? new Date(padrino.activeUntil) : new Date(now)
-      desde.setMonth(desde.getMonth() + 1)
+      const base = padrino.activeUntil && padrino.activeUntil.getTime() > now.getTime() ? new Date(padrino.activeUntil) : new Date(now)
+      const desde = addMonths(base, 1, padrino.billingAnchorDay)
       // Acreditar el mes y marcar la referida como ya premiada van juntos: si se cortaba entre
       // los dos updates, la corrida siguiente volvía a regalar otro mes por el mismo referido.
       await prisma.$transaction([

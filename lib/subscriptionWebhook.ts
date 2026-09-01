@@ -11,11 +11,14 @@
 // todavía — así el webhook no necesita saber nada de mails.
 
 import { DEFAULT_PLAN_TIERS, isPlanTier, type PlanTiers } from './plans'
+import { addMonths, billingAnchorFrom } from './dates'
 
 export interface CafeChargeState {
   activeUntil: Date | null
   pendingSubscriptionTier: string | null
   mpLastProcessedPaymentId: string | null
+  /** Día de facturación del café. null = todavía sin fijar (ver lib/dates.ts). */
+  billingAnchorDay?: number | null
 }
 
 export interface MpPaymentLike {
@@ -40,11 +43,13 @@ export function computeChargeOutcome(
 
   if (payment.status === 'approved') {
     const from = cafe.activeUntil && cafe.activeUntil.getTime() > now.getTime() ? cafe.activeUntil : now
-    const activeUntil = new Date(from)
-    activeUntil.setMonth(activeUntil.getMonth() + 1)
+    // El primer cobro de una suscripción fija el día de facturación; los siguientes lo respetan.
+    const anchorDay = cafe.billingAnchorDay ?? billingAnchorFrom(from)
+    const activeUntil = addMonths(from, 1, anchorDay)
 
     const base: ChargeUpdate = {
       activeUntil,
+      billingAnchorDay: anchorDay,
       mpFirstFailureAt: null, // cualquier cobro aprobado limpia un fallo previo — reactivación automática
       mpLastChargeAt: now,
       mpLastChargeStatus: 'approved',

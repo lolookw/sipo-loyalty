@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { SELLABLE_TIERS, isPlanTier, type PlanTier } from '@/lib/plans'
 import { getPlanTiers } from '@/lib/planTiers'
 import { cancelSubscription } from '@/lib/mercadopago'
+import { addMonths, billingAnchorFrom } from '@/lib/dates'
 
 // PATCH — acciones de plan del café (solo superadmin)
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -38,9 +39,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     case 'activate_month': {
       const months = Math.min(Math.max(Number(body.months) || 1, 1), 24)
       // Si ya tiene una fecha futura, extiende desde ahí (apila); si no, desde hoy
-      const base = cafe.activeUntil && cafe.activeUntil > now ? new Date(cafe.activeUntil) : new Date(now)
-      base.setMonth(base.getMonth() + months)
-      data = { planStatus: 'active', isPermanent: false, activeUntil: base, activatedAt: now, ...tierFields }
+      const from = cafe.activeUntil && cafe.activeUntil > now ? new Date(cafe.activeUntil) : new Date(now)
+      // El día de facturación se fija en la primera activación y se respeta de ahí en más, así
+      // "+1 mes" sobre un 31 de enero da 28 de febrero y no 3 de marzo (ver lib/dates.ts).
+      const anchorDay = cafe.billingAnchorDay ?? billingAnchorFrom(from)
+      data = {
+        planStatus: 'active', isPermanent: false,
+        activeUntil: addMonths(from, months, anchorDay), billingAnchorDay: anchorDay,
+        activatedAt: now, ...tierFields,
+      }
       break
     }
     case 'activate_permanent':
@@ -61,7 +68,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return NextResponse.json({ error: 'Fecha inválida' }, { status: 400 })
       // Se guarda al final del día elegido: si ponés el 30, el plan vale todo el 30.
       parsed.setHours(23, 59, 59, 999)
-      data = { planStatus: 'active', isPermanent: false, activeUntil: parsed }
+      // Fijar la fecha a mano también redefine el día de facturación: es una decisión explícita
+      // sobre cuándo vence, así que los "+1 mes" siguientes tienen que respetar ESE día.
+      data = {
+        planStatus: 'active', isPermanent: false,
+        activeUntil: parsed, billingAnchorDay: billingAnchorFrom(parsed),
+      }
       break
     }
     default:

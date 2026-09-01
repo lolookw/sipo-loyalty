@@ -15,7 +15,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const cafe = await prisma.cafe.findUnique({
     where: { id },
-    select: { id: true, mpPreapprovalId: true, activeUntil: true, pendingSubscriptionTier: true, mpLastProcessedPaymentId: true },
+    select: { id: true, mpPreapprovalId: true, activeUntil: true, pendingSubscriptionTier: true, mpLastProcessedPaymentId: true, billingAnchorDay: true },
   })
   if (!cafe) return NextResponse.json({ error: 'No encontrada' }, { status: 404 })
   if (!cafe.mpPreapprovalId)

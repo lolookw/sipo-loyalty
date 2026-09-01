@@ -96,6 +96,13 @@ model Cafe {
   mpSubscriptionAmount    Int?
   pendingBillingSyncAt    DateTime?
 
+  // Día del mes en el que arrancó el período pago (28/29/30/31 incluidos). Sumar meses recortando
+  // contra este día evita que un café que arrancó un 31 quede venciendo los 3 de cada mes: sin
+  // ancla, "31 de enero + 1 mes" desborda al 3 de marzo y la fecha nunca vuelve a subir.
+  // Ver lib/dates.ts. null = todavía no se fijó; se recorta contra el día de la fecha base, que es
+  // exactamente lo que ya venía pasando (ningún café existente cambia de comportamiento).
+  billingAnchorDay        Int?
+
   // Fase 5: flags de avisos ya enviados (mismo patrón que capacityWarningSentAt/mpFirstFailureAt).
   mpWelcomeSentAt         DateTime? // "tu plan quedó activo" tras el primer cobro confirmado
   planExpiredNoticeSentAt DateTime? // "tu plan volvió a modo gratuito"; se limpia al reactivarse
