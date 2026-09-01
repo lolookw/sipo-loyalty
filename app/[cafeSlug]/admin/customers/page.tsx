@@ -1,6 +1,11 @@
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Download } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, TriangleAlert } from 'lucide-react'
+import { capacityPercent } from '@/lib/planStatus'
+import { getPlatformConfig } from '@/lib/platformConfig'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import CustomerRowActions from '@/components/dashboard/CustomerRowActions'
 
 const PAGE_SIZE = 50
 
@@ -22,6 +27,10 @@ export default async function CafeCustomersPage({
       slug: true,
       stampsRequired: true,
       currencySymbol: true,
+      planTier: true,
+      customerLimit: true,
+      primaryColor: true,
+      ownerId: true,
       _count: { select: { customers: true } },
       customers: {
         include: { customer: { select: { id: true, name: true, email: true } } },
@@ -41,8 +50,18 @@ export default async function CafeCustomersPage({
   const from = (page - 1) * PAGE_SIZE + 1
   const to = Math.min(page * PAGE_SIZE, totalCount)
 
+  const { capacityWarningPercent } = await getPlatformConfig()
+  const percent = capacityPercent(cafe, totalCount)
+  const nearCapacity = percent !== null && percent >= capacityWarningPercent
+
+  // Ajustar/eliminar clientes es solo del dueño (o superadmin) — los cajeros ven la lista
+  // pero no pueden tocar sellos/puntos ni borrar a nadie.
+  const session = await getServerSession(authOptions)
+  const canManage = session?.user.role === 'superadmin' || (session?.user.role === 'owner' && cafe.ownerId === session.user.id)
+  const gridCols = canManage ? 'grid-cols-7' : 'grid-cols-5'
+
   return (
-    <div className="p-8 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-8 max-w-3xl mx-auto">
       <div className="mb-7 flex items-start justify-between gap-4">
         <div>
           <h1 className="font-serif font-medium mb-1" style={{ fontSize: '1.7rem', color: '#43352C' }}>
@@ -50,7 +69,21 @@ export default async function CafeCustomersPage({
           </h1>
           <p className="font-sans text-sm" style={{ color: '#6B6B6B' }}>
             {totalCount} clientes registrados
+            {percent !== null && (
+              <span style={{ color: nearCapacity ? '#B56A4C' : '#C0B4A8' }}> · {percent}% de tu cupo ({totalCount}/{cafe.customerLimit})</span>
+            )}
           </p>
+          {nearCapacity && (
+            <div
+              className="mt-2 flex items-center gap-1.5 text-xs font-sans font-medium px-2.5 py-1.5 rounded-lg w-fit"
+              style={{ background: 'rgba(181,106,76,0.1)', color: '#B56A4C' }}
+            >
+              <TriangleAlert size={12} />
+              {cafe.planTier === 'grande'
+                ? 'Estás por llegar a tu límite máximo — escribinos si necesitás más lugar.'
+                : 'Te estás por quedar sin lugar en tu plan actual.'}
+            </div>
+          )}
         </div>
         {totalCount > 0 && (
           <a
@@ -65,17 +98,19 @@ export default async function CafeCustomersPage({
       </div>
 
       <div
-        className="rounded-[24px] overflow-hidden"
+        className="rounded-[24px] overflow-x-auto"
         style={{ background: 'white', border: '1px solid #E9DED1', boxShadow: '0 8px 30px rgba(67,53,44,0.04)' }}
       >
+        <div className="min-w-[640px]">
         <div
-          className="grid grid-cols-5 text-xs font-sans font-semibold uppercase tracking-[0.12em] px-6 py-3.5"
+          className={`grid ${gridCols} text-xs font-sans font-semibold uppercase tracking-[0.12em] px-6 py-3.5`}
           style={{ color: '#6B6B6B', borderBottom: '1px solid #E9DED1', background: '#FCFBF8' }}
         >
           <div className="col-span-2">Cliente</div>
           <div className="text-center">Sellos</div>
           <div className="text-center">Puntos</div>
           <div className="text-right">Total gastado</div>
+          {canManage && <div className="col-span-2 text-right">Acciones</div>}
         </div>
 
         {cafe.customers.length === 0 && (
@@ -85,10 +120,10 @@ export default async function CafeCustomersPage({
           </div>
         )}
 
-        {cafe.customers.map(({ customer, stamps, points, totalSpent }, i) => (
+        {cafe.customers.map(({ id: linkId, customer, stamps, points, totalSpent }, i) => (
           <div
             key={customer.id}
-            className="grid grid-cols-5 px-6 py-3.5 items-center transition-colors last:border-0 hover:bg-[#FCFBF8]"
+            className={`grid ${gridCols} px-6 py-3.5 items-center transition-colors last:border-0 hover:bg-[#FCFBF8]`}
             style={{ borderBottom: '1px solid #F6F0E8' }}
           >
             <div className="col-span-2 flex items-center gap-3">
@@ -123,6 +158,19 @@ export default async function CafeCustomersPage({
             <div className="text-right font-sans text-sm font-medium" style={{ color: '#6B6B6B' }}>
               {cafe.currencySymbol}{totalSpent.toLocaleString()}
             </div>
+            {canManage && (
+              <div className="col-span-2">
+                <CustomerRowActions
+                  cafeSlug={cafeSlug}
+                  linkId={linkId}
+                  customerName={customer.name}
+                  stamps={stamps}
+                  points={points}
+                  stampsRequired={cafe.stampsRequired}
+                  primaryColor={cafe.primaryColor}
+                />
+              </div>
+            )}
           </div>
         ))}
 
@@ -173,6 +221,7 @@ export default async function CafeCustomersPage({
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   )

@@ -50,8 +50,55 @@ model Cafe {
   planStatus    String    @default("trial")  // "trial" | "active" | "expired"
   isPermanent   Boolean   @default(false)     // activado para siempre por superadmin / grandfathered
   activeUntil   DateTime?                      // vencimiento cuando planStatus="active"
-  customerLimit Int       @default(5)          // tope de clientes del plan gratuito (ignorado si permanente/activo)
+  planTier      String    @default("free")     // "free" | "economico" | "medio" | "grande" | "grandfathered" — ver lib/plans.ts
+  customerLimit Int       @default(10)         // tope de clientes del tier actual (ignorado si planTier="grandfathered")
   activatedAt   DateTime?                      // última activación por superadmin
+
+  // Aviso proactivo de capacidad (no depende de Mercado Pago, ver sipo-plan/04-mercado-pago/plan.md §5I).
+  // null = no avisado / se re-arma solo al volver a caer por debajo del umbral. Barrido por el cron
+  // diario contra TODOS los cafés, no enganchado en el alta de cliente (un día de latencia es aceptable).
+  capacityWarningSentAt DateTime?
+
+  // ── Mercado Pago (cobro automático de la suscripción, ver sipo-plan/04-mercado-pago/plan.md) ──
+  // Fase 1: alta + activar tier al primer cobro. mpPreapprovalStatus es solo diagnóstico (espejo de
+  // MP); la lógica de negocio real sigue viviendo en planTier/activeUntil, igual que siempre.
+  mpPreapprovalId         String?   // id de la suscripción en MP
+  // Email de la cuenta de MERCADO PAGO del dueño. MP exige payer_email al crear la suscripción y
+  // valida que quien autoriza entre con esa misma cuenta: si el dueño usa un mail distinto en MP
+  // que en Sipo, tira "tu email no coincide con el de la suscripción". Por eso se pregunta y se
+  // guarda aparte del Owner.email de login. null = todavía no lo cargó (se usa el de login).
+  mpPayerEmail            String?
+  mpPreapprovalStatus     String?   // espejo del status de MP: "pending" | "authorized" | "cancelled"
+  pendingSubscriptionTier String?   // tier elegido al hacer alta, pendiente de que el PRIMER cobro
+                                     // confirme (nunca se sube el tier antes de esa confirmación —
+                                     // ver plan §5A, cuidado con el back_url optimista)
+  pendingSubscriptionAt   DateTime? // cuándo arrancó ese intento — si nunca se confirma, el cron
+                                     // lo limpia solo pasadas PENDING_SUBSCRIPTION_TIMEOUT_HOURS
+                                     // (si no, el panel queda trabado en "Confirmando…" para siempre)
+  mpLastChargeAt          DateTime?
+  mpLastChargeStatus      String?   // "approved" | "rejected" (último intento de cobro conocido)
+  mpLastProcessedPaymentId String?  // id del último pago de MP ya aplicado — evita reprocesar el
+                                     // mismo webhook reenviado (idempotencia, ver plan §6)
+  // Fase 2: throttle del mail "no pudimos cobrarte" — lo setea el CRON al mandarlo (no el
+  // webhook), así el webhook no necesita saber nada de mails (ver lib/subscriptionWebhook.ts).
+  // null = no avisado todavía para el fallo actual; se limpia solo con el próximo cobro aprobado.
+  mpFirstFailureAt        DateTime?
+  // Fase 3: pedido del dueño de cambiar de tier (subir o bajar). No se ejecuta solo — queda
+  // pendiente para que el superadmin lo aplique a mano (ver plan §5F).
+  planChangeRequestedTier String?
+  planChangeRequestedAt   DateTime?
+  planChangeNotifiedAt    DateTime? // ya se le avisó al equipo por mail de este pedido
+
+  // Fase 4: sincronización del precio cobrado en MP contra el precio vigente del tier.
+  // mpSubscriptionAmount = lo que MP le cobra HOY (lo seteamos nosotros al crear/actualizar).
+  // Si el precio del tier cambia en lib/plans.ts, el cron detecta la diferencia solo, avisa al
+  // dueño, y recién PRICE_CHANGE_NOTICE_DAYS después aplica el monto nuevo (ver plan §5G).
+  mpSubscriptionAmount    Int?
+  pendingBillingSyncAt    DateTime?
+
+  // Fase 5: flags de avisos ya enviados (mismo patrón que capacityWarningSentAt/mpFirstFailureAt).
+  mpWelcomeSentAt         DateTime? // "tu plan quedó activo" tras el primer cobro confirmado
+  planExpiredNoticeSentAt DateTime? // "tu plan volvió a modo gratuito"; se limpia al reactivarse
 
   // ── Guía de inicio (checklist de onboarding para el dueño) ──
   // null = todavía no la abrió (dispara el aviso en el sidebar). Cafés existentes al momento de
@@ -70,6 +117,13 @@ model Cafe {
   reengagementCompletedEnabled Boolean   @default(false)
   reengagementCompletedDays    Int       @default(3)  // días desde que la tarjeta quedó completa sin canjear
   reengagementCompletedMessage String?
+
+  // Referidos entre cafeterías: si esta cafetería llegó recomendada por otra, la que la mandó
+  // gana un mes gratis cuando esta empieza a pagar (ver el pase 12 del cron). Sin tope.
+  referredByCafeId String?
+  referredByCafe   Cafe?  @relation("CafeReferrals", fields: [referredByCafeId], references: [id])
+  referredCafes    Cafe[] @relation("CafeReferrals")
+  referralRewardGrantedAt DateTime? // ya se le acreditó el mes a quien la refirió (una sola vez)
 
   owner    Owner    @relation(fields: [ownerId], references: [id])
   ownerId  String
@@ -314,7 +368,19 @@ model PlatformConfig {
   instagramUrl   String?  // IG de la plataforma Sipo
   xUrl           String?  // X/Twitter de la plataforma Sipo
   graceDays      Int      @default(7)  // días de gracia tras el vencimiento antes de cortar
+  capacityWarningPercent Int @default(80) // % del tope de clientes que dispara el aviso proactivo
+  priceChangeNoticeDays  Int @default(14) // días de aviso previo antes de aplicar un precio nuevo
   updatedAt      DateTime @updatedAt
+}
+
+// Override editable de precio/tope por tier. Los valores por defecto viven en lib/plans.ts
+// (DEFAULT_PLAN_TIERS); esta tabla solo guarda lo que el superadmin cambió desde el panel.
+// Un tier sin fila acá usa el default. Ver lib/planTiers.ts para la resolución.
+model PlanTierConfig {
+  tier          String   @id // "free" | "economico" | "medio" | "grande"
+  customerLimit Int
+  price         Int
+  updatedAt     DateTime @updatedAt
 }
 
 // Solicitudes de alta self-service (leads). No están ligadas a un Cafe todavía.
@@ -327,6 +393,7 @@ model CafeSignupRequest {
   city       String?
   instagram  String?
   message    String?
+  referredBy String?  // texto libre: qué cafetería dice que le recomendó Sipo
   status     String   @default("pending") // "pending" | "approved" | "rejected"
   createdAt  DateTime @default(now())
 

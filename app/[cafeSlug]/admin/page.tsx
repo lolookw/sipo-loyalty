@@ -42,7 +42,7 @@ export default async function CafeAdminPage({ params }: { params: Promise<{ cafe
   return (
     <div>
       <div className="px-8 pt-8 pb-0 max-w-xl mx-auto">
-        <div className="grid grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {stats.map(({ label, value, icon: Icon }) => (
             <div
               key={label}

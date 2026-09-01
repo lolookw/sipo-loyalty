@@ -7,6 +7,8 @@ export type PlatformConfigData = {
   instagramUrl: string | null
   xUrl: string | null
   graceDays: number
+  capacityWarningPercent: number
+  priceChangeNoticeDays: number
 }
 
 const DEFAULTS: PlatformConfigData = {
@@ -16,6 +18,8 @@ const DEFAULTS: PlatformConfigData = {
   instagramUrl: null,
   xUrl: null,
   graceDays: 7,
+  capacityWarningPercent: 80,
+  priceChangeNoticeDays: 14,
 }
 
 /** Lee la config singleton de la plataforma. Si no existe, devuelve defaults (sin escribir). */
@@ -29,6 +33,8 @@ export async function getPlatformConfig(): Promise<PlatformConfigData> {
     instagramUrl: cfg.instagramUrl,
     xUrl: cfg.xUrl,
     graceDays: cfg.graceDays,
+    capacityWarningPercent: cfg.capacityWarningPercent,
+    priceChangeNoticeDays: cfg.priceChangeNoticeDays,
   }
 }
 

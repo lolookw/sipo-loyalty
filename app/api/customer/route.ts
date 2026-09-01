@@ -36,7 +36,15 @@ export async function GET(req: NextRequest) {
 
   if (!customer) return NextResponse.json(null)
 
-  return NextResponse.json({ ...customer, loyalty: customer.cafes[0] || null })
+  const loyalty = customer.cafes[0] || null
+  // Una persona puede existir en la plataforma sin ser cliente de ESTE café (se registró en otro).
+  // En ese caso la caja solo necesita el nombre para no hacérselo tipear de nuevo al darla de alta:
+  // el teléfono, el cumpleaños y la bebida favorita son datos que dejó en otra cafetería y no
+  // corresponde mostrárselos a esta.
+  if (!loyalty)
+    return NextResponse.json({ id: customer.id, name: customer.name, email: customer.email, loyalty: null })
+
+  return NextResponse.json({ ...customer, loyalty })
 }
 
 export async function POST(req: NextRequest) {

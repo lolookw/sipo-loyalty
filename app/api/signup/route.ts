@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
   const city = body.city ? String(body.city).trim() : null
   const instagram = body.instagram ? String(body.instagram).trim() : null
   const message = body.message ? String(body.message).trim().slice(0, 1000) : null
+  const referredBy = body.referredBy ? String(body.referredBy).trim().slice(0, 120) : null
 
   if (!cafeName || !ownerName || !email)
     return NextResponse.json({ error: 'Completá el nombre de la cafetería, tu nombre y tu email.' }, { status: 400 })
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, duplicate: true }) // idempotente para el usuario, no crea duplicado
 
   await prisma.cafeSignupRequest.create({
-    data: { cafeName, ownerName, email, phone, city, instagram, message },
+    data: { cafeName, ownerName, email, phone, city, instagram, message, referredBy },
   })
 
   return NextResponse.json({ ok: true })

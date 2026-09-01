@@ -14,6 +14,7 @@ interface SignupRequest {
   city: string | null
   instagram: string | null
   message: string | null
+  referredBy: string | null
   status: string
   createdAt: string
 }
@@ -70,6 +71,12 @@ export default function SignupRequestsList({ requests: initial }: { requests: Si
                   {r.city && <span className="flex items-center gap-1.5"><MapPin size={11} />{r.city}</span>}
                   {r.instagram && <span className="flex items-center gap-1.5"><Instagram size={11} />{r.instagram}</span>}
                 </div>
+                {r.referredBy && (
+                  <p className="text-xs mt-2">
+                    <span className="text-zinc-500">Dice que la recomendó:</span>{' '}
+                    <span className="text-amber-400">{r.referredBy}</span>
+                  </p>
+                )}
                 {r.message && <p className="text-xs text-zinc-500 mt-2 italic">“{r.message}”</p>}
                 <div className="text-[11px] text-zinc-600 mt-2">{new Date(r.createdAt).toLocaleDateString('es-AR')}</div>
               </div>

@@ -314,16 +314,15 @@ export default async function DemoPage() {
             className="font-sans mb-8 max-w-sm mx-auto text-sm leading-7"
             style={{ color: 'rgba(255,255,255,0.45)' }}
           >
-            Escribinos y arrancamos. Sin contratos ni letra chica.
+            Arrancá gratis. Subís de plan cuando tu cafetería crezca.
           </p>
-          <a
-            href={contactUrl}
-            {...(contactExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+          <Link
+            href="/sumate"
             className="inline-block font-sans font-semibold text-sm px-8 py-3.5 rounded-full transition-all hover:opacity-85 active:scale-[0.98]"
             style={{ background: '#B56A4C', color: 'white' }}
           >
-            Hablemos
-          </a>
+            Ver planes y sumarme
+          </Link>
         </section>
 
         {/* ── Footer ── */}
@@ -355,6 +354,12 @@ export default async function DemoPage() {
             >
               Contacto
             </a>
+            <Link href="/terminos" className="hover:text-[#43352C] transition-colors">
+              Términos
+            </Link>
+            <Link href="/privacidad" className="hover:text-[#43352C] transition-colors">
+              Privacidad
+            </Link>
             <Link href="/login" className="hover:text-[#43352C] transition-colors">
               Iniciar sesión
             </Link>

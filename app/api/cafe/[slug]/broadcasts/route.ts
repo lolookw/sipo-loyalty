@@ -2,26 +2,28 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getCafeBySlugIfAuthorized } from '@/lib/cafeAuth'
 
 const MAX_SUBJECT_LEN = 150
 const MAX_MESSAGE_LEN = 2000
 
-function requireCafeAccess(session: { user?: { role?: string; cafeSlug?: string | null } } | null, slug: string) {
-  if (!session?.user) return { ok: false as const, status: 401, error: 'Unauthorized' }
-  if (session.user.role !== 'superadmin' && session.user.cafeSlug !== slug)
-    return { ok: false as const, status: 403, error: 'Forbidden' }
-  return { ok: true as const }
+// Difusión = mail masivo a todos los clientes del café, con la cuota de Resend compartida por
+// toda la plataforma de por medio. Es una acción de dueño: el chequeo viejo comparaba el slug de
+// la sesión, y el cajero tiene el slug de su café, así que podía componer y disparar difusiones.
+async function requireOwner(slug: string) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) return { ok: false as const, status: 401, error: 'Unauthorized' }
+  const cafe = await getCafeBySlugIfAuthorized(slug, session, 'owner')
+  if (!cafe) return { ok: false as const, status: 403, error: 'Forbidden' }
+  return { ok: true as const, cafe }
 }
 
 // GET /api/cafe/[slug]/broadcasts — historial de difusiones del café (para la página de admin).
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const session = await getServerSession(authOptions)
-  const access = requireCafeAccess(session, slug)
+  const access = await requireOwner(slug)
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
-
-  const cafe = await prisma.cafe.findUnique({ where: { slug }, select: { id: true } })
-  if (!cafe) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const { cafe } = access
 
   const broadcasts = await prisma.broadcast.findMany({
     where: { cafeId: cafe.id },
@@ -37,12 +39,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 // plataforma.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const session = await getServerSession(authOptions)
-  const access = requireCafeAccess(session, slug)
+  const access = await requireOwner(slug)
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
-
-  const cafe = await prisma.cafe.findUnique({ where: { slug }, select: { id: true } })
-  if (!cafe) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const { cafe } = access
 
   const body = await req.json()
   const subject = String(body?.subject ?? '').trim()

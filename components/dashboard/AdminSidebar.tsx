@@ -1,9 +1,10 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
-import { LayoutDashboard, Settings, Users, Gift, LogOut, Coffee, ExternalLink, ShieldCheck, BarChart3, Megaphone, Compass, Send } from 'lucide-react'
+import { LayoutDashboard, Settings, Users, Gift, LogOut, Coffee, ExternalLink, ShieldCheck, BarChart3, Megaphone, Compass, Send, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -11,17 +12,22 @@ interface Props {
   userName: string
   isSuperAdmin: boolean
   isOwner?: boolean
+  nearCapacity?: boolean
 }
 
-export default function AdminSidebar({ cafe, userName, isSuperAdmin, isOwner }: Props) {
+export default function AdminSidebar({ cafe, userName, isSuperAdmin, isOwner, nearCapacity }: Props) {
   const pathname = usePathname()
   const base = `/${cafe.slug}/admin`
   const showOnboardingBadge = isOwner && !cafe.onboardingSeenAt
+  // En celular el sidebar fijo se comía la pantalla: pasa a ser un cajón que se abre con el menú.
+  const [open, setOpen] = useState(false)
+  useEffect(() => { setOpen(false) }, [pathname]) // al navegar, cerrar el cajón
+  const anyBadge = showOnboardingBadge || nearCapacity
 
   const navItems = [
     { href: base, label: 'Inicio', icon: LayoutDashboard, exact: true },
     { href: `${base}/analytics`, label: 'Estadísticas', icon: BarChart3 },
-    { href: `${base}/customers`, label: 'Clientes', icon: Users },
+    { href: `${base}/customers`, label: 'Clientes', icon: Users, badge: nearCapacity },
     { href: `${base}/rewards`, label: 'Recompensas', icon: Gift },
     { href: `${base}/campaigns`, label: 'Campañas', icon: Megaphone },
     { href: `${base}/broadcasts`, label: 'Difusión', icon: Send },
@@ -38,7 +44,55 @@ export default function AdminSidebar({ cafe, userName, isSuperAdmin, isOwner }: 
   const activeBg    = 'rgba(255,255,255,0.10)'
 
   return (
-    <aside className="w-56 min-h-screen flex flex-col sticky top-0" style={{ background: sidebarBg }}>
+    <>
+      {/* Barra superior — solo en celular */}
+      <div
+        className="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3"
+        style={{ background: sidebarBg, borderBottom: `1px solid ${borderColor}` }}
+      >
+        <button
+          onClick={() => setOpen(true)}
+          className="relative p-1.5 rounded-lg"
+          style={{ color: 'rgba(255,255,255,0.8)' }}
+          aria-label="Abrir menú"
+        >
+          <Menu size={20} />
+          {anyBadge && (
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full" style={{ background: '#B56A4C' }} />
+          )}
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="font-sans font-semibold text-sm text-white truncate">{cafe.name}</div>
+        </div>
+        {isSuperAdmin && <ShieldCheck size={14} style={{ color: '#B56A4C' }} />}
+      </div>
+
+      {/* Fondo oscuro al abrir el cajón */}
+      {open && (
+        <div
+          className="md:hidden fixed inset-0 z-40"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      <aside
+        className={cn(
+          'w-56 flex flex-col z-50 transition-transform duration-200',
+          'fixed inset-y-0 left-0 overflow-y-auto',
+          open ? 'translate-x-0' : '-translate-x-full',
+          'md:translate-x-0 md:sticky md:inset-y-auto md:top-0 md:min-h-screen md:z-auto',
+        )}
+        style={{ background: sidebarBg }}
+      >
+      <button
+        onClick={() => setOpen(false)}
+        className="md:hidden absolute top-4 right-3 p-1.5 rounded-lg"
+        style={{ color: mutedText }}
+        aria-label="Cerrar menú"
+      >
+        <X size={18} />
+      </button>
       <div className="px-5 py-5" style={{ borderBottom: `1px solid ${borderColor}` }}>
         <div className="flex items-center gap-2.5">
           <div
@@ -119,6 +173,7 @@ export default function AdminSidebar({ cafe, userName, isSuperAdmin, isOwner }: 
           Cerrar sesión
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   )
 }

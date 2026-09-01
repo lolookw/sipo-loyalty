@@ -9,7 +9,7 @@ const inputStyle: React.CSSProperties = { background: '#F6F0E8', border: '1px so
 const inputCls = 'w-full px-4 py-3 rounded-2xl outline-none text-sm font-sans placeholder:opacity-40 transition-colors focus:border-[#B56A4C]'
 
 export default function SignupForm() {
-  const [form, setForm] = useState({ cafeName: '', ownerName: '', email: '', phone: '', city: '', instagram: '', message: '' })
+  const [form, setForm] = useState({ cafeName: '', ownerName: '', email: '', phone: '', city: '', instagram: '', message: '', referredBy: '' })
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -88,6 +88,11 @@ export default function SignupForm() {
           <label className="font-sans text-xs font-medium mb-1.5 block" style={{ color: '#6B6B6B' }}>Instagram de la cafetería</label>
           <input className={inputCls} style={inputStyle} value={form.instagram} onChange={e => set('instagram', e.target.value)} placeholder="@micafeteria" />
         </div>
+      </div>
+      <div>
+        <label className="font-sans text-xs font-medium mb-1.5 block" style={{ color: '#6B6B6B' }}>¿Alguna cafetería te recomendó Sipo? (opcional)</label>
+        <input className={inputCls} style={inputStyle} value={form.referredBy} onChange={e => set('referredBy', e.target.value)} placeholder="Nombre de la cafetería" />
+        <p className="font-sans text-xs mt-1.5" style={{ color: '#C0B4A8' }}>Si nos decís quién, le regalamos un mes de su plan.</p>
       </div>
       <div>
         <label className="font-sans text-xs font-medium mb-1.5 block" style={{ color: '#6B6B6B' }}>¿Algo que quieras contarnos? (opcional)</label>

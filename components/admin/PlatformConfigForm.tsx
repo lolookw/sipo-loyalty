@@ -11,6 +11,8 @@ interface Config {
   instagramUrl: string | null
   xUrl: string | null
   graceDays: number
+  capacityWarningPercent: number
+  priceChangeNoticeDays: number
 }
 
 const inputCls =
@@ -118,6 +120,31 @@ export default function PlatformConfigForm({ config: initial }: { config: Config
             onChange={e => set('graceDays', Number(e.target.value))}
           />
           <p className="text-[11px] text-zinc-600 mt-1">Plazo de aviso antes de cortar el servicio a un café vencido.</p>
+        </div>
+
+        <div>
+          <label className={labelCls}>% de cupo que dispara el aviso de capacidad</label>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            className={inputCls}
+            value={config.capacityWarningPercent}
+            onChange={e => set('capacityWarningPercent', Number(e.target.value))}
+          />
+          <p className="text-[11px] text-zinc-600 mt-1">Le avisamos al dueño cuando su cantidad de clientes llega a este % del tope de su tier.</p>
+        </div>
+        <div>
+          <label className={labelCls}>Días de aviso antes de un aumento</label>
+          <input
+            type="number"
+            min={0}
+            max={90}
+            className={inputCls}
+            value={config.priceChangeNoticeDays}
+            onChange={e => set('priceChangeNoticeDays', Number(e.target.value))}
+          />
+          <p className="text-[11px] text-zinc-600 mt-1">Cuánto antes se le avisa a cada cafetería que cambia el precio de su plan.</p>
         </div>
       </div>
 

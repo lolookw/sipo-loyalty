@@ -2,12 +2,13 @@ import type { Cafe } from '@prisma/client'
 import { prisma } from './prisma'
 import { getPlatformConfig } from './platformConfig'
 import { canRegisterNewCustomer } from './planStatus'
+import { getPlanTiers } from './planTiers'
 
 // Re-export de las funciones puras para consumo del lado servidor
-export { getEffectivePlan, canRegisterNewCustomer, isServiceLimited, planLabel } from './planStatus'
+export { getEffectivePlan, canRegisterNewCustomer, isServiceLimited, planLabel, tierLabel } from './planStatus'
 export type { EffectivePlan } from './planStatus'
 
-type LimitCafe = Pick<Cafe, 'planStatus' | 'isPermanent' | 'activeUntil' | 'customerLimit'>
+type LimitCafe = Pick<Cafe, 'planStatus' | 'isPermanent' | 'activeUntil' | 'customerLimit' | 'planTier'>
 
 /**
  * Chequeo async listo para endpoints: un cliente YA vinculado siempre pasa;
@@ -24,5 +25,7 @@ export async function cafeCanAcceptCustomer(
   if (existing) return true
   const count = await prisma.customerCafe.count({ where: { cafeId: cafe.id } })
   const { graceDays } = await getPlatformConfig()
-  return canRegisterNewCustomer(cafe, count, graceDays)
+  // El tope del plan gratuito es editable desde el panel: se lee vigente, no el default de código.
+  const tiers = await getPlanTiers()
+  return canRegisterNewCustomer(cafe, count, graceDays, new Date(), tiers.free.customerLimit ?? undefined)
 }

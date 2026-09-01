@@ -720,6 +720,19 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
                 >
                   {loading ? 'Registrando…' : 'Unirme al programa'}
                 </button>
+                {/* Aviso al titular de los datos en el momento del registro: es la persona que
+                    tiene que estar informada de que puede recibir promociones (del café y de
+                    Sipo), no la cafetería. Ver /privacidad. */}
+                <p className="font-sans text-[11px] leading-relaxed pt-1" style={{ color: textFaint }}>
+                  Al registrarte aceptás los{' '}
+                  <a href="/terminos" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: textMuted }}>
+                    Términos
+                  </a>{' '}
+                  y recibir novedades de {cafe.name} y de Sipo. Podés darte de baja cuando quieras.{' '}
+                  <a href="/privacidad" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: textMuted }}>
+                    Cómo usamos tus datos
+                  </a>
+                </p>
               </form>
             </motion.div>
           )}
@@ -1311,6 +1324,22 @@ export default function LoyaltyPage({ cafe }: { cafe: Cafe }) {
           )}
 
         </AnimatePresence>
+
+        {/* Los clientes que ya estaban registrados nunca pasan por la pantalla de alta, así que
+            no vieron el aviso de datos: acá lo tienen siempre a mano desde su propia tarjeta. */}
+        {(step === 'dashboard' || step === 'profile') && (
+          <p className="text-center font-sans text-[11px] mt-6" style={{ color: textFaint }}>
+            <a
+              href="/privacidad"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+              style={{ color: textFaint }}
+            >
+              Cómo usamos tus datos
+            </a>
+          </p>
+        )}
       </div>
 
       {/* ── QR modal ── */}

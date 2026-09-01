@@ -97,7 +97,9 @@ export async function GET(req: NextRequest) {
   const cafeId = req.nextUrl.searchParams.get('cafeId')
   if (!cafeId) return NextResponse.json({ error: 'Missing cafeId' }, { status: 400 })
 
-  const cafe = await getCafeIfAuthorized(cafeId, session)
+  // Solo dueño/superadmin: las campañas regalan puntos y sellos, no son cosa de la caja
+  // (crear/editar/borrar ya era del dueño; leer y CREAR se colaban por el chequeo de slug).
+  const cafe = await getCafeIfAuthorized(cafeId, session, 'owner')
   if (!cafe) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const campaigns = await prisma.campaign.findMany({
@@ -112,7 +114,7 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await req.json()
 
-  const cafe = await getCafeIfAuthorized(body.cafeId, session)
+  const cafe = await getCafeIfAuthorized(body.cafeId, session, 'owner')
   if (!cafe) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const fields = parseCampaignFields(body, false)

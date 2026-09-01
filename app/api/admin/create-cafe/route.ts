@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { normalizeEmail } from '@/lib/utils'
+import { validateCafeSlug } from '@/lib/slug'
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -13,7 +14,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { ownerName, ownerEmail, ownerPassword, cafeName, cafeSlug } = await req.json()
+    const { ownerName, ownerEmail, ownerPassword, cafeName, cafeSlug, referredByCafeId } = await req.json()
 
     if (!ownerName || !ownerEmail || !ownerPassword || !cafeName || !cafeSlug) {
       return NextResponse.json({ error: 'Todos los campos son requeridos' }, { status: 400 })
@@ -28,7 +29,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Ya existe un usuario con ese email' }, { status: 400 })
     }
 
-    const slugExists = await prisma.cafe.findUnique({ where: { slug: cafeSlug } })
+    const parsedSlug = validateCafeSlug(cafeSlug)
+    if (!parsedSlug.ok) return NextResponse.json({ error: parsedSlug.error }, { status: 400 })
+    const { slug } = parsedSlug
+
+    const slugExists = await prisma.cafe.findUnique({ where: { slug } })
     if (slugExists) {
       return NextResponse.json({ error: 'Ese slug ya está en uso' }, { status: 400 })
     }
@@ -44,7 +49,10 @@ export async function POST(req: NextRequest) {
         cafes: {
           create: {
             name: cafeName,
-            slug: cafeSlug,
+            slug,
+            // Si llegó recomendada por otra cafetería, se guarda para acreditarle el mes de
+            // regalo a la que la mandó cuando esta empiece a pagar (ver el cron).
+            ...(referredByCafeId ? { referredByCafeId } : {}),
           },
         },
       },

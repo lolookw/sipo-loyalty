@@ -5,17 +5,21 @@ import { prisma } from '@/lib/prisma'
 import CreateCafeForm from '@/components/admin/CreateCafeForm'
 import SuperAdminCafeList from '@/components/admin/SuperAdminCafeList'
 import PlatformConfigForm from '@/components/admin/PlatformConfigForm'
+import PlanTiersForm from '@/components/admin/PlanTiersForm'
 import SignupRequestsList from '@/components/admin/SignupRequestsList'
+import Link from 'next/link'
 import { ShieldCheck, LogOut } from 'lucide-react'
 import SuperAdminSignOut from '@/components/admin/SuperAdminSignOut'
+import { getPlanTiers } from '@/lib/planTiers'
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const session = await getServerSession(authOptions)
   if (session?.user?.role !== 'superadmin') redirect('/admin/login')
 
   const sp = await searchParams
+  const tiers = await getPlanTiers()
 
-  const [cafes, platformConfig, signupRequests] = await Promise.all([
+  const [cafes, platformConfig, signupRequests, uniqueCustomers] = await Promise.all([
     prisma.cafe.findMany({
       include: {
         owner: { select: { name: true, email: true } },
@@ -32,6 +36,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       where: { status: 'pending' },
       orderBy: { createdAt: 'desc' },
     }),
+    prisma.customer.count(), // personas únicas: quien está en 2 cafés cuenta UNA vez
   ])
 
   // Prefill del formulario de nueva cafetería desde un lead (botón "Crear café")
@@ -58,9 +63,9 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <SuperAdminSignOut />
       </div>
 
-      <div className="max-w-4xl mx-auto p-8 space-y-10">
+      <div className="max-w-4xl mx-auto p-4 sm:p-8 space-y-10">
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
             <div className="text-3xl font-bold text-white">{cafes.length}</div>
             <div className="text-zinc-500 text-sm mt-1">Cafeterías</div>
@@ -69,7 +74,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
             <div className="text-3xl font-bold text-white">
               {cafes.reduce((acc, c) => acc + c._count.customers, 0)}
             </div>
-            <div className="text-zinc-500 text-sm mt-1">Clientes totales</div>
+            <div className="text-zinc-500 text-sm mt-1">Vínculos cliente-café</div>
           </div>
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
             <div className="text-3xl font-bold text-white">
@@ -77,6 +82,10 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
             </div>
             <div className="text-zinc-500 text-sm mt-1">Cajeros registrados</div>
           </div>
+          <Link href="/admin/clientes" className="bg-zinc-900 border border-zinc-800 hover:border-amber-500/40 rounded-xl p-5 transition-colors block">
+            <div className="text-3xl font-bold text-white">{uniqueCustomers}</div>
+            <div className="text-zinc-500 text-sm mt-1">Personas únicas →</div>
+          </Link>
         </div>
 
         {/* Solicitudes de alta (leads) */}
@@ -89,6 +98,12 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           />
         </div>
 
+        {/* Planes y precios */}
+        <div>
+          <h2 className="text-base font-semibold text-white mb-4">Planes y precios</h2>
+          <PlanTiersForm tiers={tiers} />
+        </div>
+
         {/* Configuración de la plataforma */}
         <div>
           <h2 className="text-base font-semibold text-white mb-4">Configuración de la plataforma</h2>
@@ -98,7 +113,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         {/* Nueva cafetería */}
         <div id="nueva-cafeteria">
           <h2 className="text-base font-semibold text-white mb-4">Nueva cafetería</h2>
-          <CreateCafeForm initial={createInitial} />
+          <CreateCafeForm initial={createInitial} cafes={cafes.map(c => ({ id: c.id, name: c.name }))} />
         </div>
 
         {/* Lista de cafeterías */}
@@ -106,7 +121,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           <h2 className="text-base font-semibold text-white mb-4">
             Cafeterías registradas <span className="text-zinc-500 font-normal">({cafes.length})</span>
           </h2>
-          <SuperAdminCafeList cafes={cafes} graceDays={platformConfig.graceDays} />
+          <SuperAdminCafeList cafes={cafes} graceDays={platformConfig.graceDays} tiers={tiers} />
         </div>
       </div>
     </div>

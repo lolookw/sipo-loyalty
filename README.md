@@ -2,11 +2,11 @@
 
 A production loyalty platform for cafés: branded public pages, customer rewards, cashier tools, an owner dashboard, and a public REST API for POS/ERP integrations — all in one multi-tenant app.
 
-Sipo turns a café's loyalty program into a simple digital flow: customers verify by email, collect stamps or points, cashiers manage purchases from a focused POS-style screen, owners run campaigns and referrals and read their own analytics, and external systems (POS, ERP) can post purchases straight into the loyalty engine through a versioned API.
+Sipo turns a café's loyalty program into a simple digital flow: customers verify by email, collect stamps or points, cashiers manage purchases from a focused POS-style screen, owners run campaigns and referrals and read their own analytics, and external systems (POS, ERP) can post purchases straight into the loyalty engine through a versioned API. Cafés subscribe and pay for their own plan through Mercado Pago, with billing state driven by verified webhooks rather than by the browser redirect.
 
 > **Currently in production, used by real cafés.** This repo is a public mirror of the live codebase (no customer data, credentials, or business-specific config included) kept for portfolio review.
 
-> Built around production concerns: multi-tenant routing, role-based access, OTP verification, transactional loyalty logic, idempotent API writes, plan-gated features, scheduled jobs, image uploads, and tenant-safe admin workflows.
+> Built around production concerns: multi-tenant routing, role-based access, OTP verification, transactional loyalty logic, idempotent API writes, recurring billing, plan-gated features, scheduled jobs, image uploads, and tenant-safe admin workflows.
 
 ---
 
@@ -40,8 +40,10 @@ The goal is not just to show screens. It shows how a small business SaaS handles
 | Broadcasts dashboard | Send a one-time email update to all opted-in customers, queued and rate-limited by the cron |
 | Getting started guide | Self-updating setup checklist for new café owners, with per-step skip |
 | Analytics dashboard | Visits, new vs. returning customers, redemptions, and peak hours — read-only, owner-facing |
+| Billing | Subscribe, change, or cancel a paid plan from the owner's settings, charged monthly through Mercado Pago |
 | Developer docs | `/developers` — public API reference for POS/ERP integrators |
-| Super admin panel | Create cafés, review signup requests, activate plans, manage platform-wide config |
+| Legal pages | `/terminos` and `/privacidad`, linked from signup and from the customer card |
+| Super admin panel | Create cafés, review signup requests, activate plans, edit plan prices and limits, browse every person on the platform, manage platform-wide config |
 
 ---
 
@@ -87,14 +89,21 @@ The goal is not just to show screens. It shows how a small business SaaS handles
 - Export their customer list as a CSV.
 - Follow a setup checklist that auto-detects what's already configured (logo, colors, stamps, rewards, staff), with a per-step "skip" for what doesn't apply.
 - Generate and revoke API keys for their own POS/ERP integration.
-- Review customers, points, stamps, and total spend.
+- Review customers, points, stamps, and total spend — and adjust a customer's stamps/points by hand or remove them from the café.
+- Subscribe to a paid plan, request a plan change, or cancel — cancelling stops future charges without cutting service before the period already paid for.
+- Get a heads-up email when the café crosses ~80% of its plan's customer limit, plus a live indicator in the panel.
 
 ### Super admin
 
 - Create cafés and owner accounts.
 - Review and approve self-service signup requests.
-- Activate/extend a café's plan (trial, monthly, permanent) or let it lapse.
+- Activate/extend a café's plan (trial, monthly, permanent), fix its expiry date by hand, or let it lapse.
+- Edit each plan tier's price and customer limit from the panel — prices live in the database, not in code, and a change is announced to affected cafés before it is applied to their subscription.
+- Check a café's latest Mercado Pago charge on demand, for when a webhook is late or lost.
+- Issue a temporary password for an owner who lost access (shown once, forced change on next login).
+- Browse every person registered across the platform, with CSV export.
 - Manage platform-wide config (contact links shown on marketing/demo pages).
+- Delete a café, with an explicit confirmation step that lists what is lost and requires typing the café's name.
 - Access café dashboards when needed for administration.
 
 ---
@@ -126,10 +135,24 @@ Full endpoint reference (`/me`, `/customers`, `/customers/search`, `/purchases`,
 
 ---
 
+## Subscription billing
+
+Cafés pay monthly through **Mercado Pago Preapproval**. The interesting part is not the checkout — it is keeping billing state honest when the network, the browser, and the payment provider all disagree.
+
+- **The webhook is the source of truth, not the redirect.** A café's tier is never upgraded on the `back_url` the browser comes back to; only a payment the app re-fetches from Mercado Pago's API confirms it. The webhook payload itself is treated as "something changed", never as business data.
+- **Signed webhooks, deduped by payment id.** Signatures are verified before anything is read, and the last applied payment id is stored so a replayed or duplicated notification can't credit a month twice. A subscription charge can arrive under two different topics; both are normalized to the same shape.
+- **Abandoned checkouts unstick themselves.** If an owner starts a subscription and never authorizes it, a daily pass clears the pending state after 24h — but first it asks Mercado Pago whether a charge was actually approved and the webhook was simply lost, so a café that did pay is recovered instead of cancelled.
+- **Price changes are announced before they apply.** Changing a tier's price doesn't touch anyone's subscription right away: the cron detects the difference, emails each affected café a configurable number of days in advance, and only then updates the amount at Mercado Pago.
+- **Downgrades never leave a charge running.** Dropping a café to free or expiring it cancels its subscription first, so nobody keeps getting billed for a service they no longer have.
+- **Billing email goes through the cron, never the webhook.** Around a dozen billing emails (welcome, failed charge, plan expired, price change, referral reward) are sent by scheduled passes with their own "already sent" flags, so the webhook stays fast and the shared email quota stays protected.
+
+---
+
 ## Product details worth reviewing
 
 - **Multi-tenant routing:** café pages live under `/:cafeSlug`, each with isolated data.
-- **Role-aware auth:** super admin, owner, and cashier access paths are separated.
+- **Role-aware auth:** super admin, owner, and cashier access paths are separated — and the separation is enforced by an explicit access level per endpoint (`staff` for what happens at the till, `owner` for configuration, the customer database, broadcasts, campaigns and rewards), not by comparing the slug in the session token.
+- **Explicit public field lists:** the public café pages and the public café endpoint enumerate the fields they may expose instead of stripping sensitive ones one by one, so a new column in the schema is private by default rather than leaking into the HTML of an open page.
 - **OTP customer verification:** public customer registration requires a cryptographically random OTP proof — no bypass path via the registration endpoint.
 - **Tenant-safe uploads:** uploads check café ownership/staff access before using Supabase storage.
 - **Transactional rewards:** stamp and point operations run inside guarded Prisma transactions to avoid double-spend and race conditions — the same guards apply whether the transaction comes from the cashier UI or the public API.
@@ -149,7 +172,8 @@ Full endpoint reference (`/me`, `/customers`, `/customers/search`, `/purchases`,
 | UI | React 18, Tailwind CSS, Framer Motion |
 | Auth | NextAuth.js JWT sessions + hashed per-café API keys |
 | Database | Prisma + PostgreSQL |
-| Email | Resend (OTP codes, expiration notices, re-engagement, broadcasts) |
+| Payments | Mercado Pago Preapproval (recurring subscriptions) with signed webhooks |
+| Email | Resend (OTP codes, expiration notices, re-engagement, broadcasts, billing notices) |
 | Uploads | Supabase Storage |
 | Scheduled jobs | Vercel Cron (`vercel.json`) |
 | Validation/tooling | TypeScript, ESLint, npm audit |
@@ -188,7 +212,13 @@ SUPABASE_SERVICE_ROLE_KEY="replace-with-service-role-key"
 
 # Cron auth for the stamp/points expiration job
 CRON_SECRET="replace-with-a-strong-secret"
+
+# Subscription billing (Mercado Pago)
+MP_ACCESS_TOKEN="replace-with-mercado-pago-access-token"
+MP_WEBHOOK_SECRET="replace-with-mercado-pago-webhook-secret"
 ```
+
+`NEXTAUTH_URL` must be the canonical public URL: it builds Mercado Pago's return URL *and* every link in outgoing emails.
 
 ### 3. Set up the database
 
@@ -242,6 +272,8 @@ Required production environment variables:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `CRON_SECRET`
+- `MP_ACCESS_TOKEN`
+- `MP_WEBHOOK_SECRET`
 
 Then deploy with your usual Vercel flow.
 
@@ -269,7 +301,14 @@ Important safeguards implemented in the app:
 - sanitized public URLs and custom links;
 - normalized emails and duplicate checks across owner/staff accounts;
 - transaction guards for stamp and points updates, shared by the cashier UI and the public API;
-- the public unsubscribe link is scoped to one café's broadcasts only (never transactional email) and relies on an unguessable id, the same security model as referral links.
+- the public unsubscribe link is scoped to one café's broadcasts only (never transactional email) and relies on an unguessable id, the same security model as referral links;
+- Mercado Pago webhooks are signature-verified before their payload is read, and business state is only changed after re-fetching the payment from Mercado Pago's own API;
+- public pages send an explicit allow-list of café fields to the browser, so billing identifiers and owner contact details can't reach the HTML of an open page;
+- a cashier's session cannot reach owner-level actions (customer export, broadcasts, campaigns, rewards, configuration) — access is checked against real café ownership, not against the slug carried in the session;
+- looking up a person who belongs to another café returns only what the till needs to greet them, not the profile they left elsewhere;
+- loyalty settings are range-checked server-side, so a hand-made request can't leave a café with a card configuration that makes redemptions always succeed;
+- café slugs are validated server-side against a reserved-route list, so a new café can't shadow a platform page;
+- irreversible admin actions (deleting a café) run in a single transaction and require typing the café's name to confirm.
 
 ---
 
@@ -277,6 +316,7 @@ Important safeguards implemented in the app:
 
 - Convert remaining `<img>` usages to `next/image` where it makes sense.
 - Expand automated test coverage around the public API and the scheduled expiration job.
+- Retire the legacy `/dashboard` panel, superseded by the per-café `/:cafeSlug/admin` one.
 - Webhook/POS bridge integrations beyond the direct REST API (in progress for a specific POS partner).
 - Tiered loyalty levels (bronze/silver/gold) — deliberately left out so far in favor of simpler stamps/points rules.
 

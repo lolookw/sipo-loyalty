@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await req.json()
 
-  const cafe = await getCafeIfAuthorized(body.cafeId, session)
+  // Crear premios es del dueño (editar y borrar ya lo eran). La caja solo necesita el GET.
+  const cafe = await getCafeIfAuthorized(body.cafeId, session, 'owner')
   if (!cafe) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   // Whitelist fields — never pass raw body to Prisma

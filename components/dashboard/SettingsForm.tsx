@@ -2,12 +2,14 @@
 
 import { useCallback, useRef, useState } from 'react'
 import ApiKeysManager from './ApiKeysManager'
+import BillingSection from './BillingSection'
 import dynamic from 'next/dynamic'
 const Cropper = dynamic<any>(() => import('react-easy-crop'), { ssr: false })
 import toast from 'react-hot-toast'
 import { Save, ExternalLink, Plus, Trash2, UserPlus, Key, Sparkles, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { generateAccentOptions } from '@/lib/utils'
 import { DEFAULT_INACTIVE_MESSAGE, DEFAULT_COMPLETED_MESSAGE } from '@/lib/reengagement'
+import type { PlanTiers } from '@/lib/plans'
 
 type CropArea = { x: number; y: number; width: number; height: number }
 
@@ -73,6 +75,15 @@ interface Cafe {
   reengagementCompletedEnabled: boolean
   reengagementCompletedDays: number
   reengagementCompletedMessage: string | null
+  planTier: string
+  pendingSubscriptionTier: string | null
+  mpPreapprovalId: string | null
+  mpPreapprovalStatus: string | null
+  activeUntil: Date | string | null
+  planChangeRequestedTier: string | null
+  mpSubscriptionAmount: number | null
+  pendingBillingSyncAt: Date | string | null
+  mpPayerEmail: string | null
 }
 
 interface StaffMember {
@@ -87,6 +98,8 @@ interface Props {
   cafeStaff: StaffMember[]
   isSuperAdmin: boolean
   apiAllowed: boolean
+  tiers: PlanTiers
+  ownerEmail: string | null
 }
 
 // ── Shared input style ─────────────────────────────────────────────────────
@@ -293,7 +306,7 @@ function ImageUpload({
   )
 }
 
-export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdmin, apiAllowed }: Props) {
+export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdmin, apiAllowed, tiers, ownerEmail }: Props) {
   const [form, setForm] = useState({
     name: cafe.name,
     description: cafe.description || '',
@@ -354,7 +367,11 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
         body: JSON.stringify({ ...form, customLinks: JSON.stringify(customLinks) }),
       })
       if (res.ok) toast.success('Configuración guardada')
-      else toast.error('Error al guardar')
+      else {
+        // El server valida sellos, puntos, colores y URLs: mostrar SU mensaje, no uno genérico.
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error || 'Error al guardar')
+      }
     } catch { toast.error('Error al guardar') }
     finally { setSaving(false) }
   }
@@ -551,7 +568,7 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
                     className="p-3 rounded-xl"
                     style={{ background: '#FCFBF8', border: '1px solid #E9DED1' }}
                   >
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {accentOptions.map((color, i) => {
                         const labels = ['Luminoso', 'Oscuro', 'Dorado', 'Análogo +', 'Análogo −', 'Split']
                         const isSelected = form.accentColor.toLowerCase() === color.toLowerCase()
@@ -697,7 +714,7 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
                 <Toggle checked={form.pointsEnabled} onChange={v => set('pointsEnabled', v)} label="Sistema de puntos" primaryColor={form.primaryColor} />
                 {form.pointsEnabled && (
                   <div className="mt-3 space-y-3 pt-3" style={{ borderTop: '1px solid #E9DED1' }}>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <Field label="Símbolo de moneda">
                         <SInput value={form.currencySymbol} onChange={v => set('currencySymbol', v)} placeholder="$" />
                       </Field>
@@ -821,6 +838,24 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
               )}
             </div>
           </div>
+        </Section>
+
+        <Section title="Facturación">
+          <BillingSection
+            cafeSlug={cafe.slug}
+            planTier={cafe.planTier}
+            pendingSubscriptionTier={cafe.pendingSubscriptionTier}
+            mpPreapprovalId={cafe.mpPreapprovalId}
+            mpPreapprovalStatus={cafe.mpPreapprovalStatus}
+            activeUntil={cafe.activeUntil ? new Date(cafe.activeUntil).toISOString() : null}
+            planChangeRequestedTier={cafe.planChangeRequestedTier}
+            tiers={tiers}
+            mpPayerEmail={cafe.mpPayerEmail}
+            ownerEmail={ownerEmail}
+            mpSubscriptionAmount={cafe.mpSubscriptionAmount}
+            pendingBillingSyncAt={cafe.pendingBillingSyncAt ? new Date(cafe.pendingBillingSyncAt).toISOString() : null}
+            primaryColor={form.primaryColor}
+          />
         </Section>
 
         <Section title="Integraciones (API)">

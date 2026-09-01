@@ -36,6 +36,15 @@ export async function PATCH(req: NextRequest) {
     const g = Number(body.graceDays)
     if (Number.isFinite(g) && g >= 0 && g <= 90) data.graceDays = Math.floor(g)
   }
+  if ('capacityWarningPercent' in body) {
+    const p = Number(body.capacityWarningPercent)
+    if (Number.isFinite(p) && p >= 1 && p <= 100) data.capacityWarningPercent = Math.floor(p)
+  }
+
+  if ('priceChangeNoticeDays' in body) {
+    const d = Number(body.priceChangeNoticeDays)
+    if (Number.isFinite(d) && d >= 0 && d <= 90) data.priceChangeNoticeDays = Math.floor(d)
+  }
 
   const cfg = await prisma.platformConfig.upsert({
     where: { id: 'singleton' },
