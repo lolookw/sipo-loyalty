@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, AlertTriangle, Check, Printer, RotateCcw, Scissors, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, Check, FoldVertical, Printer, RotateCcw, SlidersHorizontal } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 
 interface Props {
@@ -58,6 +58,9 @@ interface SignDraft {
   subtext: string
   primaryColor: string
   accentColor: string
+  showLogo: boolean
+  /** Multiplicador del tamaño máximo del logo (1 = tamaño por defecto). */
+  logoScale: number
 }
 
 function defaultDraft(cafe: Props['cafe']): SignDraft {
@@ -67,15 +70,17 @@ function defaultDraft(cafe: Props['cafe']): SignDraft {
     subtext: 'Registrate con tu email.\nSin app. Sin tarjeta.',
     primaryColor: cafe.primaryColor,
     accentColor: cafe.accentColor,
+    showLogo: !!cafe.logoUrl,
+    logoScale: 1,
   }
 }
 
 const HEX = /^#[0-9a-fA-F]{6}$/
 
-function CafeIdentity({ cafe, compact = false }: { cafe: Props['cafe']; compact?: boolean }) {
+function CafeIdentity({ cafe, showLogo, compact = false }: { cafe: Props['cafe']; showLogo: boolean; compact?: boolean }) {
   return (
     <div className={`cafe-identity ${compact ? 'cafe-identity--compact' : ''}`}>
-      {cafe.logoUrl && (
+      {cafe.logoUrl && showLogo && (
         <div className="cafe-logo-safe">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={cafe.logoUrl} alt={`Logo de ${cafe.name}`} className="cafe-logo" />
@@ -116,10 +121,10 @@ function CustomerMessage({ draft, url, compact = false }: { draft: SignDraft; ur
   )
 }
 
-function CashierFace({ cafe }: { cafe: Props['cafe'] }) {
+function CashierFace({ cafe, draft }: { cafe: Props['cafe']; draft: SignDraft }) {
   return (
     <div className="cashier-face-inner">
-      <CafeIdentity cafe={cafe} compact />
+      <CafeIdentity cafe={cafe} showLogo={draft.showLogo} compact />
       <div className="cashier-copy">
         <div className="eyebrow">ESTE LADO MIRA A LA CAJA</div>
         <h2>Ayudalos a dar el primer paso.</h2>
@@ -135,12 +140,12 @@ function TentSheet({ cafe, draft, url }: { cafe: Props['cafe']; draft: SignDraft
   return (
     <div className="print-sheet tent-sheet" aria-label="Cartel autoportante A4">
       <section className="tent-panel tent-cashier">
-        <CashierFace cafe={cafe} />
+        <CashierFace cafe={cafe} draft={draft} />
       </section>
       <div className="fold-line"><span>PLEGAR</span></div>
       <section className="tent-panel tent-customer">
         <div className="tent-customer-inner">
-          <CafeIdentity cafe={cafe} compact />
+          <CafeIdentity cafe={cafe} showLogo={draft.showLogo} compact />
           <CustomerMessage draft={draft} url={url} compact />
           <SipoCredit />
         </div>
@@ -148,8 +153,11 @@ function TentSheet({ cafe, draft, url }: { cafe: Props['cafe']; draft: SignDraft
       <div className="fold-line"><span>PLEGAR</span></div>
       <section className="tent-base">
         <div className="assembly-guide">
-          <Scissors size={18} />
-          <div><strong>Armado:</strong> recortá el contorno, marcá las líneas punteadas, plegá las caras y pegá la pestaña por debajo del borde superior.</div>
+          <FoldVertical size={18} />
+          <div>
+            <strong>Armado:</strong> marcá las tres líneas punteadas, plegá y pegá la pestaña por
+            debajo del borde superior. <strong>No hay que recortar nada</strong>: la hoja se usa entera.
+          </div>
         </div>
         <div className="base-mark">BASE · QUEDA APOYADA SOBRE EL MOSTRADOR</div>
       </section>
@@ -164,7 +172,7 @@ function FlatSheet({ cafe, draft, url }: { cafe: Props['cafe']; draft: SignDraft
     <div className="print-sheet flat-sheet" aria-label="Cartel plano A4">
       <div className="flat-accent" />
       <div className="flat-content">
-        <CafeIdentity cafe={cafe} />
+        <CafeIdentity cafe={cafe} showLogo={draft.showLogo} />
         <CustomerMessage draft={draft} url={url} />
         <SipoCredit />
       </div>
@@ -208,6 +216,7 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
         '--accent-on-light': accentOnLight,
         '--accent-on-primary': accentOnPrimary,
         '--primary-text': primaryText,
+        '--logo-scale': String(draft.logoScale),
       } as React.CSSProperties}
     >
       <header className="sign-toolbar">
@@ -260,6 +269,29 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
                 <span>Color de acento</span>
                 <input type="color" value={accent} onChange={e => set('accentColor', e.target.value)} />
               </label>
+              {cafe.logoUrl && (
+                <label className="tweak-wide tweak-logo">
+                  <span>Logo</span>
+                  <div>
+                    <label className="tweak-check">
+                      <input
+                        type="checkbox"
+                        checked={draft.showLogo}
+                        onChange={e => set('showLogo', e.target.checked)}
+                      />
+                      Mostrarlo
+                    </label>
+                    <input
+                      type="range" min={0.6} max={1.8} step={0.05}
+                      value={draft.logoScale}
+                      disabled={!draft.showLogo}
+                      onChange={e => set('logoScale', Number(e.target.value))}
+                      aria-label="Tamaño del logo"
+                    />
+                    <output>{Math.round(draft.logoScale * 100)}%</output>
+                  </div>
+                </label>
+              )}
             </div>
             <div className="tweak-foot">
               <p>
@@ -318,6 +350,12 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
         .tweak-grid input[type=text], .tweak-grid input:not([type]), .tweak-grid textarea { width: 100%; padding: 9px 11px; border: 1px solid #e0d3c4; border-radius: 10px; background: white; color: #43352c; font: 500 13px/1.4 var(--font-sans); resize: vertical; }
         .tweak-wide { grid-column: 1 / -1; }
         .tweak-color input[type=color] { width: 54px; height: 34px; padding: 0; border: 1px solid #e0d3c4; border-radius: 9px; background: white; cursor: pointer; }
+        .tweak-logo > div { display: flex; align-items: center; gap: 14px; }
+        .tweak-check { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; color: #43352c; font: 500 12.5px var(--font-sans); }
+        .tweak-check input { width: 15px; height: 15px; accent-color: #43352c; }
+        .tweak-logo input[type=range] { flex: 1; min-width: 120px; accent-color: #43352c; }
+        .tweak-logo input[type=range]:disabled { opacity: .4; }
+        .tweak-logo output { flex: 0 0 auto; min-width: 40px; color: #746961; font: 600 12px var(--font-sans); text-align: right; }
         .tweak-foot { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 13px; padding-top: 12px; border-top: 1px solid #e5dacd; }
         .tweak-foot p { margin: 0; color: #746961; font: 500 11.5px/1.45 var(--font-sans); }
         .tweak-foot a { color: #43352c; text-decoration: underline; }
@@ -329,9 +367,26 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
         .print-sheet { position: relative; width: 210mm; height: 297mm; margin: 0 auto; overflow: hidden; background: #f8f3ec; box-shadow: 0 12px 42px rgba(43,33,28,.18); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .cafe-identity { display: flex; flex-direction: column; align-items: center; gap: 5mm; text-align: center; }
         .cafe-identity--compact { flex-direction: row; gap: 4mm; text-align: left; }
-        .cafe-logo-safe { display: flex; align-items: center; justify-content: center; width: 31mm; height: 20mm; padding: 2.5mm; overflow: hidden; border: .35mm solid rgba(43,33,28,.13); border-radius: 3.5mm; background: linear-gradient(135deg, #fff 0 72%, #e9ded1 72%); }
-        .cafe-identity--compact .cafe-logo-safe { width: 23mm; height: 14mm; border-radius: 2.5mm; }
-        .cafe-logo { display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 .35mm .45mm rgba(43,33,28,.32)); }
+        /* El logo conserva su propia proporción: se acota por lado máximo en vez de meterse en una
+           caja fija, que descolocaba los cuadrados y los muy anchos. Sin marco ni sombra: cada logo
+           trae su fondo y su forma, y decorarlo por encima es lo que lo hacía ver raro. */
+        .cafe-logo-safe { display: flex; align-items: center; justify-content: center; }
+        /* El logo se fija por ALTO y el ancho sale de su propia proporción, así la caja lo abraza en
+           vez de encajarlo: un logo cuadrado y uno panorámico ocupan lo que les corresponde. El
+           max-width evita que uno muy alargado se coma la hoja (ahí sí entra object-fit y sobra aire,
+           pero sin deformarlo). Importa que el alto sea explícito: un SVG que solo trae viewBox no
+           tiene tamaño intrínseco y con todo en auto colapsaría a cero. */
+        .cafe-logo { display: block; height: calc(26mm * var(--logo-scale)); width: auto; max-width: calc(60mm * var(--logo-scale)); object-fit: contain; object-position: center; }
+        .cafe-identity--compact .cafe-logo { height: calc(16mm * var(--logo-scale)); max-width: calc(46mm * var(--logo-scale)); }
+        /* En la cara de la caja la identidad comparte una columna de 55mm con el nombre, asi que
+           ahi el logo cede: sin este tope, uno panoramico empujaba el nombre fuera de la columna.
+           El min() evita que subir el tamano desde el panel vuelva a romperlo. */
+        .tent-cashier .cafe-logo { height: min(calc(13mm * var(--logo-scale)), 17mm); max-width: min(calc(20mm * var(--logo-scale)), 26mm); }
+        /* Y si aun asi no entran en un renglon (nombre largo, logo panoramico), el nombre baja a la
+           linea de abajo en vez de desbordar la columna. El piso de lo que puede achicarse es la
+           palabra mas larga del nombre, asi que ningun tope fijo alcanza para todos los casos. */
+        .tent-cashier .cafe-identity { flex-wrap: wrap; }
+        .cafe-name { min-width: 0; }
         .cafe-name { max-width: 150mm; color: var(--primary-on-light); font: 600 13mm/.95 var(--font-serif); letter-spacing: -.035em; }
         .cafe-identity--compact .cafe-name { max-width: 115mm; font-size: 7.2mm; }
         .customer-message { display: flex; flex-direction: column; align-items: center; gap: 10mm; text-align: center; }
@@ -357,7 +412,7 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
         .tent-cashier { background: var(--cafe-primary); color: var(--primary-text); }
         .cashier-face-inner { height: 100%; display: grid; grid-template-columns: 55mm 1fr; grid-template-rows: 1fr auto; align-items: center; gap: 5mm 9mm; transform: rotate(180deg); }
         .tent-cashier .cafe-name { color: var(--primary-text); }
-        .tent-cashier .cafe-logo-safe { background: linear-gradient(135deg, #fff 0 72%, #e9ded1 72%); }
+        .tent-cashier .cafe-logo-safe { padding: 1.5mm 2mm; border-radius: 2mm; background: #fff; }
         .cashier-copy .eyebrow { color: var(--accent-on-primary); opacity: .82; }
         .cashier-copy h2 { margin: 0; color: var(--primary-text); font: italic 600 8.5mm/.98 var(--font-serif); letter-spacing: -.03em; }
         .cashier-copy p { margin: 2.5mm 0 0; max-width: 105mm; color: var(--primary-text); opacity: .82; font: 500 3.4mm/1.45 var(--font-sans); }
