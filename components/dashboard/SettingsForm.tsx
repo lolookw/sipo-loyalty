@@ -6,7 +6,7 @@ import BillingSection from './BillingSection'
 import dynamic from 'next/dynamic'
 const Cropper = dynamic<any>(() => import('react-easy-crop'), { ssr: false })
 import toast from 'react-hot-toast'
-import { Save, ExternalLink, Plus, Trash2, UserPlus, Key, Sparkles, Upload, X, ZoomIn, ZoomOut, AlertTriangle, Printer } from 'lucide-react'
+import { Save, ExternalLink, Plus, Trash2, UserPlus, Key, Sparkles, Upload, X, ZoomIn, ZoomOut, AlertTriangle, Printer, Instagram } from 'lucide-react'
 import { generateAccentOptions } from '@/lib/utils'
 import { DEFAULT_INACTIVE_MESSAGE, DEFAULT_COMPLETED_MESSAGE } from '@/lib/reengagement'
 import type { PlanTiers } from '@/lib/plans'
@@ -522,6 +522,26 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
               style={{ background: form.primaryColor }}
             >
               <Printer size={14} /> Preparar cartel
+            </a>
+          </div>
+          <div
+            className="mt-3 flex flex-col sm:flex-row sm:items-center gap-4 rounded-2xl p-4"
+            style={{ background: '#F6F0E8', border: '1px solid #E9DED1' }}
+          >
+            <div className="flex-1">
+              <div className="font-sans text-sm font-semibold" style={{ color: '#43352C' }}>Piezas para Instagram</div>
+              <p className="font-sans text-xs mt-1 leading-relaxed" style={{ color: '#6B6B6B' }}>
+                Descargá story, feed cuadrado o feed vertical con tu logo, colores y QR para anunciar que usás Sipo.
+              </p>
+            </div>
+            <a
+              href={`/${cafe.slug}/redes`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-sans font-semibold text-white text-xs hover:opacity-90 transition-opacity"
+              style={{ background: form.primaryColor }}
+            >
+              <Instagram size={14} /> Preparar piezas
             </a>
           </div>
         </div>

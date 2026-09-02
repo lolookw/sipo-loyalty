@@ -25,6 +25,7 @@
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "framer-motion": "^11.2.10",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^0.383.0",
     "mercadopago": "^3.6.0",
     "next": "^15.5.16",

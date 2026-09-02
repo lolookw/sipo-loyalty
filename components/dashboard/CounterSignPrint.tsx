@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, AlertTriangle, Check, FoldVertical, Printer, RotateCcw, SlidersHorizontal } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
+import { HEX_COLOR, contrastRatio, loyaltyWord, readableText } from '@/lib/brandContrast'
 
 interface Props {
   cafe: {
@@ -21,31 +22,6 @@ interface Props {
 }
 
 type Format = 'tent' | 'flat'
-
-function colorLuminance(color: string) {
-  const normalized = color.replace('#', '')
-  if (!/^[0-9a-f]{6}$/i.test(normalized)) return 0
-  const channels = [0, 2, 4].map(index => {
-    const channel = parseInt(normalized.slice(index, index + 2), 16) / 255
-    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
-  })
-  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
-}
-
-function contrastRatio(first: string, second: string) {
-  const [light, dark] = [colorLuminance(first), colorLuminance(second)].sort((a, b) => b - a)
-  return (light + 0.05) / (dark + 0.05)
-}
-
-function readableText(background: string) {
-  return contrastRatio(background, '#FFFFFF') >= contrastRatio(background, '#2B211C') ? '#FFFFFF' : '#2B211C'
-}
-
-function loyaltyWord(stampEnabled: boolean, pointsEnabled: boolean) {
-  if (stampEnabled && !pointsEnabled) return 'sellos'
-  if (pointsEnabled && !stampEnabled) return 'puntos'
-  return 'beneficios'
-}
 
 /**
  * Lo que el dueño puede retocar antes de imprimir. NO se guarda: son ajustes de esta impresión.
@@ -82,8 +58,6 @@ function defaultDraft(cafe: Props['cafe']): SignDraft {
     logoRounded: false,
   }
 }
-
-const HEX = /^#[0-9a-fA-F]{6}$/
 
 function CafeIdentity({ cafe, draft, compact = false }: { cafe: Props['cafe']; draft: SignDraft; compact?: boolean }) {
   return (
@@ -205,8 +179,8 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
 
   // Los colores del borrador pasan por la misma matemática de contraste que los de marca: si el
   // dueño elige algo ilegible sobre el papel, el texto se corrige solo.
-  const primary = HEX.test(draft.primaryColor) ? draft.primaryColor : cafe.primaryColor
-  const accent = HEX.test(draft.accentColor) ? draft.accentColor : cafe.accentColor
+  const primary = HEX_COLOR.test(draft.primaryColor) ? draft.primaryColor : cafe.primaryColor
+  const accent = HEX_COLOR.test(draft.accentColor) ? draft.accentColor : cafe.accentColor
   const primaryText = readableText(primary)
   const primaryOnLight = contrastRatio(primary, '#F8F3EC') >= 3
     ? primary

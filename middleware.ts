@@ -21,11 +21,12 @@ export default withAuth(
       }
     }
 
-    // /[cafeSlug]/admin/* y /[cafeSlug]/cartel → owner de ese café o superadmin.
-    // El cartel para el mostrador vive fuera de /admin a propósito (es una hoja A4 a sangre para
-    // imprimir, no puede heredar la barra lateral del panel), pero es una herramienta del dueño:
-    // se guarda con el mismo umbral, y así también le corre el cambio de contraseña temporal.
-    const cafeAdminMatch = pathname.match(/^\/([^/]+)\/(?:admin|cartel)(\/|$)/)
+    // /[cafeSlug]/admin/*, /[cafeSlug]/cartel y /[cafeSlug]/redes → owner de ese café o superadmin.
+    // El cartel y las piezas para redes viven fuera de /admin a propósito (son lienzos a sangre
+    // para imprimir o exportar, no pueden heredar la barra lateral del panel), pero son
+    // herramientas del dueño: se guardan con el mismo umbral, y así también les corre el cambio
+    // de contraseña temporal.
+    const cafeAdminMatch = pathname.match(/^\/([^/]+)\/(?:admin|cartel|redes)(\/|$)/)
     if (cafeAdminMatch && cafeAdminMatch[1] !== 'admin') {
       const slug = cafeAdminMatch[1]
       if (
@@ -95,6 +96,7 @@ export const config = {
     '/:cafeSlug/admin',
     '/:cafeSlug/admin/:path*',
     '/:cafeSlug/cartel',
+    '/:cafeSlug/redes',
     '/:cafeSlug/caja',
     '/:cafeSlug/caja/:path*',
     '/:cafeSlug/change-password',
