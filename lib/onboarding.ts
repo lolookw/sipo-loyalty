@@ -54,7 +54,7 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
     key: 'staff',
     title: 'Agregá un usuario cajero',
     description: 'Para que tu equipo pueda sumar sellos/puntos desde la caja sin tu usuario.',
-    href: '/admin/settings',
+    href: '/admin/equipo',
   },
 ]
 

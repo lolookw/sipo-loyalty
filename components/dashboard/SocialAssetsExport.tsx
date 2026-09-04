@@ -128,7 +128,7 @@ export default function SocialAssetsExport({ cafe, loyaltyUrl }: Props) {
     >
       <header className="social-toolbar">
         <div className="toolbar-top">
-          <Link href={`/${cafe.slug}/admin/settings`} className="back-link"><ArrowLeft size={16} /> Volver a Configuración</Link>
+          <Link href={`/${cafe.slug}/admin/compartir`} className="back-link"><ArrowLeft size={16} /> Volver a Compartir mi café</Link>
           <div>
             <h1>Piezas para Instagram</h1>
             <p>Elegí un formato, personalizalo si querés y descargá el PNG listo para publicar.</p>

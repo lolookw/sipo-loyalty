@@ -45,7 +45,7 @@ export function buildCapacityWarningEmailHtml(opts: {
     ? `<p style="color: #6B6B6B; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">
          Ya estás en nuestro plan más grande. Escribinos si necesitás más lugar del que tiene hoy — vemos qué podemos armar.
        </p>`
-    : `<a href="${baseUrl}/${cafeSlug}/admin/settings" style="display: inline-block; background: #43352C; color: white; text-decoration: none; font-size: 14px; font-weight: 600; padding: 12px 22px; border-radius: 12px;">
+    : `<a href="${baseUrl}/${cafeSlug}/admin/facturacion" style="display: inline-block; background: #43352C; color: white; text-decoration: none; font-size: 14px; font-weight: 600; padding: 12px 22px; border-radius: 12px;">
          Ver planes y mejorar
        </a>`
   return {

@@ -65,7 +65,7 @@ export function buildWelcomeEmailHtml(opts: { cafeName: string; tierLabel: strin
       `Listo, tu plan <strong>${escapeHtml(opts.tierLabel)}</strong> ya está activo. ` +
       `Ahora podés tener hasta <strong>${opts.customerLimit} clientes</strong> registrados. ` +
       `Se renueva solo cada mes por ${money(opts.amount)}, y podés cancelarlo cuando quieras desde tu panel.`,
-      { href: `${opts.baseUrl}/${opts.cafeSlug}/admin/settings`, label: 'Ir a mi panel' },
+      { href: `${opts.baseUrl}/${opts.cafeSlug}/admin/facturacion`, label: 'Ir a mi panel' },
     ),
   }
 }
@@ -79,7 +79,7 @@ export function buildPlanExpiredEmailHtml(opts: { cafeName: string; freeLimit: n
       `Tu plan venció, así que tu cafetería volvió al plan gratuito. Tus clientes actuales y sus ` +
       `sellos siguen intactos — lo único que cambia es que no vas a poder registrar clientes nuevos ` +
       `más allá de ${opts.freeLimit}. Podés reactivar tu plan cuando quieras desde tu panel.`,
-      { href: `${opts.baseUrl}/${opts.cafeSlug}/admin/settings`, label: 'Reactivar mi plan' },
+      { href: `${opts.baseUrl}/${opts.cafeSlug}/admin/facturacion`, label: 'Reactivar mi plan' },
     ),
   }
 }

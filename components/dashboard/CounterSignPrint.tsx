@@ -207,7 +207,7 @@ export default function CounterSignPrint({ cafe, loyaltyUrl }: Props) {
     >
       <header className="sign-toolbar">
         <div className="toolbar-top">
-          <Link href={`/${cafe.slug}/admin/settings`} className="back-link"><ArrowLeft size={16} /> Volver a Configuración</Link>
+          <Link href={`/${cafe.slug}/admin/compartir`} className="back-link"><ArrowLeft size={16} /> Volver a Compartir mi café</Link>
           <div>
             <h1>Cartel para el mostrador</h1>
             <p>Elegí un formato, imprimilo en A4 al 100% y seguí las guías.</p>

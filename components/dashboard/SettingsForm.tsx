@@ -1,15 +1,12 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import ApiKeysManager from './ApiKeysManager'
-import BillingSection from './BillingSection'
 import dynamic from 'next/dynamic'
 const Cropper = dynamic<any>(() => import('react-easy-crop'), { ssr: false })
 import toast from 'react-hot-toast'
-import { Save, ExternalLink, Plus, Trash2, UserPlus, Key, Sparkles, Upload, X, ZoomIn, ZoomOut, AlertTriangle, Printer, Instagram } from 'lucide-react'
+import { Save, ExternalLink, Plus, Trash2, Sparkles, Upload, X, ZoomIn, ZoomOut, AlertTriangle } from 'lucide-react'
 import { generateAccentOptions } from '@/lib/utils'
 import { DEFAULT_INACTIVE_MESSAGE, DEFAULT_COMPLETED_MESSAGE } from '@/lib/reengagement'
-import type { PlanTiers } from '@/lib/plans'
 
 type CropArea = { x: number; y: number; width: number; height: number }
 
@@ -86,20 +83,8 @@ interface Cafe {
   mpPayerEmail: string | null
 }
 
-interface StaffMember {
-  id: string
-  name: string
-  email: string
-  createdAt: Date
-}
-
 interface Props {
   cafe: Cafe
-  cafeStaff: StaffMember[]
-  isSuperAdmin: boolean
-  apiAllowed: boolean
-  tiers: PlanTiers
-  ownerEmail: string | null
   /** Cuántos clientes tienen cada cantidad de sellos — para el aviso al bajar el tope. */
   stampHistogram: { stamps: number; count: number }[]
 }
@@ -308,7 +293,7 @@ function ImageUpload({
   )
 }
 
-export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdmin, apiAllowed, tiers, ownerEmail, stampHistogram }: Props) {
+export default function SettingsForm({ cafe, stampHistogram }: Props) {
   const [form, setForm] = useState({
     name: cafe.name,
     description: cafe.description || '',
@@ -347,14 +332,6 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
   const [saving, setSaving] = useState(false)
   const [accentOptions, setAccentOptions] = useState<string[]>([])
 
-  const [staff, setStaff] = useState<StaffMember[]>(initialStaff)
-  const [addingStaff, setAddingStaff] = useState(false)
-  const [newStaff, setNewStaff] = useState({ name: '', email: '', password: '' })
-  const [staffLoading, setStaffLoading] = useState(false)
-
-  const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
-  const [pwLoading, setPwLoading] = useState(false)
-
   function set(key: string, value: unknown) {
     setForm(prev => ({ ...prev, [key]: value }))
   }
@@ -383,62 +360,6 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
       }
     } catch { toast.error('Error al guardar') }
     finally { setSaving(false) }
-  }
-
-  async function addStaff() {
-    if (!newStaff.name || !newStaff.email || !newStaff.password) return
-    if (newStaff.password.length < 8) { toast.error('La contraseña debe tener al menos 8 caracteres'); return }
-    setStaffLoading(true)
-    try {
-      const res = await fetch('/api/staff', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newStaff, cafeId: cafe.id }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setStaff([data, ...staff])
-        setNewStaff({ name: '', email: '', password: '' })
-        setAddingStaff(false)
-        toast.success('Cajero creado')
-      } else {
-        toast.error(data.error || 'Error al crear cajero')
-      }
-    } catch { toast.error('Error de conexión') }
-    finally { setStaffLoading(false) }
-  }
-
-  async function removeStaff(id: string, name: string) {
-    if (!confirm(`¿Eliminar al cajero ${name}?`)) return
-    const res = await fetch(`/api/staff/${id}`, { method: 'DELETE' })
-    if (res.ok) {
-      setStaff(staff.filter(s => s.id !== id))
-      toast.success('Cajero eliminado')
-    } else {
-      toast.error('Error al eliminar')
-    }
-  }
-
-  async function handleChangePassword(e: React.FormEvent) {
-    e.preventDefault()
-    if (pwForm.next !== pwForm.confirm) { toast.error('Las contraseñas no coinciden'); return }
-    if (pwForm.next.length < 8) { toast.error('Mínimo 8 caracteres'); return }
-    setPwLoading(true)
-    try {
-      const res = await fetch('/api/auth/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPassword: pwForm.current, newPassword: pwForm.next }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        toast.success('Contraseña actualizada')
-        setPwForm({ current: '', next: '', confirm: '' })
-      } else {
-        toast.error(data.error || 'Error al cambiar contraseña')
-      }
-    } catch { toast.error('Error de conexión') }
-    finally { setPwLoading(false) }
   }
 
   return (
@@ -470,81 +391,6 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
       </div>
 
       <div className="space-y-4">
-
-        {/* QR Codes */}
-        <div
-          className="rounded-[24px] p-6"
-          style={{ background: 'white', border: '1px solid #E9DED1', boxShadow: '0 8px 30px rgba(67,53,44,0.04)' }}
-        >
-          <h2
-            className="font-sans text-sm font-semibold tracking-tight mb-5 pb-4"
-            style={{ color: '#43352C', borderBottom: '1px solid #F6F0E8' }}
-          >
-            Compartir mi página
-          </h2>
-          <div className="flex gap-8 flex-wrap">
-            <div className="text-center">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(`${typeof window !== 'undefined' ? window.location.origin : ''}/${cafe.slug}/loyalty`)}&bgcolor=FCFBF8&color=43352C&margin=6`}
-                alt="QR Fidelidad"
-                className="w-32 h-32 rounded-xl mb-2 mx-auto"
-                style={{ border: '1px solid #E9DED1' }}
-              />
-              <div className="font-sans text-xs font-medium" style={{ color: '#43352C' }}>Programa de fidelidad</div>
-              <div className="font-mono text-xs" style={{ color: '#9B9089' }}>/{cafe.slug}/loyalty</div>
-            </div>
-            <div className="text-center">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(`${typeof window !== 'undefined' ? window.location.origin : ''}/${cafe.slug}`)}&bgcolor=FCFBF8&color=43352C&margin=6`}
-                alt="QR Página principal"
-                className="w-32 h-32 rounded-xl mb-2 mx-auto"
-                style={{ border: '1px solid #E9DED1' }}
-              />
-              <div className="font-sans text-xs font-medium" style={{ color: '#43352C' }}>Página principal</div>
-              <div className="font-mono text-xs" style={{ color: '#9B9089' }}>/{cafe.slug}</div>
-            </div>
-          </div>
-          <div
-            className="mt-5 flex flex-col sm:flex-row sm:items-center gap-4 rounded-2xl p-4"
-            style={{ background: '#F6F0E8', border: '1px solid #E9DED1' }}
-          >
-            <div className="flex-1">
-              <div className="font-sans text-sm font-semibold" style={{ color: '#43352C' }}>Cartel para el mostrador</div>
-              <p className="font-sans text-xs mt-1 leading-relaxed" style={{ color: '#6B6B6B' }}>
-                Generá una versión plana o autoportante con tu logo, colores y QR. Usa la última configuración guardada.
-              </p>
-            </div>
-            <a
-              href={`/${cafe.slug}/cartel`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-sans font-semibold text-white text-xs hover:opacity-90 transition-opacity"
-              style={{ background: form.primaryColor }}
-            >
-              <Printer size={14} /> Preparar cartel
-            </a>
-          </div>
-          <div
-            className="mt-3 flex flex-col sm:flex-row sm:items-center gap-4 rounded-2xl p-4"
-            style={{ background: '#F6F0E8', border: '1px solid #E9DED1' }}
-          >
-            <div className="flex-1">
-              <div className="font-sans text-sm font-semibold" style={{ color: '#43352C' }}>Piezas para Instagram</div>
-              <p className="font-sans text-xs mt-1 leading-relaxed" style={{ color: '#6B6B6B' }}>
-                Descargá story, feed cuadrado o feed vertical con tu logo, colores y QR para anunciar que usás Sipo.
-              </p>
-            </div>
-            <a
-              href={`/${cafe.slug}/redes`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-sans font-semibold text-white text-xs hover:opacity-90 transition-opacity"
-              style={{ background: form.primaryColor }}
-            >
-              <Instagram size={14} /> Preparar piezas
-            </a>
-          </div>
-        </div>
 
         <Section title="Identidad del café">
           <Field label="Nombre">
@@ -909,168 +755,6 @@ export default function SettingsForm({ cafe, cafeStaff: initialStaff, isSuperAdm
           </div>
         </Section>
 
-        <Section title="Facturación">
-          <BillingSection
-            cafeSlug={cafe.slug}
-            planTier={cafe.planTier}
-            pendingSubscriptionTier={cafe.pendingSubscriptionTier}
-            mpPreapprovalId={cafe.mpPreapprovalId}
-            mpPreapprovalStatus={cafe.mpPreapprovalStatus}
-            activeUntil={cafe.activeUntil ? new Date(cafe.activeUntil).toISOString() : null}
-            planChangeRequestedTier={cafe.planChangeRequestedTier}
-            tiers={tiers}
-            mpPayerEmail={cafe.mpPayerEmail}
-            ownerEmail={ownerEmail}
-            mpSubscriptionAmount={cafe.mpSubscriptionAmount}
-            pendingBillingSyncAt={cafe.pendingBillingSyncAt ? new Date(cafe.pendingBillingSyncAt).toISOString() : null}
-            primaryColor={form.primaryColor}
-          />
-        </Section>
-
-        <Section title="Integraciones (API)">
-          <ApiKeysManager cafeId={cafe.id} primaryColor={form.primaryColor} apiAllowed={apiAllowed} />
-        </Section>
-
-        {/* Cajeros */}
-        <div
-          className="rounded-[24px] p-6"
-          style={{ background: 'white', border: '1px solid #E9DED1', boxShadow: '0 8px 30px rgba(67,53,44,0.04)' }}
-        >
-          <div
-            className="flex items-center justify-between pb-4 mb-5"
-            style={{ borderBottom: '1px solid #F6F0E8' }}
-          >
-            <h2 className="font-sans text-sm font-semibold" style={{ color: '#43352C' }}>Cajeros</h2>
-            <button
-              type="button"
-              onClick={() => setAddingStaff(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-sans text-xs font-medium text-white transition-all hover:opacity-90"
-              style={{ background: form.primaryColor }}
-            >
-              <UserPlus size={13} /> Agregar cajero
-            </button>
-          </div>
-
-          {addingStaff && (
-            <div
-              className="mb-5 p-4 rounded-xl space-y-2.5"
-              style={{ background: '#FCFBF8', border: '1px solid #E9DED1' }}
-            >
-              <div className="font-sans text-xs font-semibold mb-3" style={{ color: '#43352C' }}>Nuevo cajero</div>
-              <input
-                type="text" placeholder="Nombre completo" value={newStaff.name}
-                onChange={e => setNewStaff({ ...newStaff, name: e.target.value })}
-                className={sInputClass} style={sInputStyle}
-              />
-              <input
-                type="email" placeholder="Email" value={newStaff.email}
-                onChange={e => setNewStaff({ ...newStaff, email: e.target.value })}
-                className={sInputClass} style={sInputStyle}
-              />
-              <input
-                type="text" placeholder="Contraseña temporal (mín. 8 caracteres)" value={newStaff.password}
-                onChange={e => setNewStaff({ ...newStaff, password: e.target.value })}
-                className={`${sInputClass} font-mono`} style={sInputStyle}
-              />
-              <p className="font-sans text-xs" style={{ color: '#9B9089' }}>
-                El cajero deberá cambiar la contraseña en su primer inicio de sesión.
-              </p>
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setAddingStaff(false)}
-                  className="px-4 py-2 rounded-xl font-sans text-sm transition-colors"
-                  style={{ border: '1px solid #E9DED1', color: '#6B6B6B', background: '#F6F0E8' }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button" onClick={addStaff} disabled={staffLoading}
-                  className="flex-1 py-2 rounded-xl font-sans font-semibold text-white text-sm hover:opacity-90 disabled:opacity-40 transition-all"
-                  style={{ background: form.primaryColor }}
-                >
-                  {staffLoading ? 'Creando…' : 'Crear cajero'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {staff.length === 0 && !addingStaff ? (
-            <p className="font-sans text-sm text-center py-4" style={{ color: '#9B9089' }}>No hay cajeros registrados.</p>
-          ) : (
-            <div className="space-y-2">
-              {staff.map(s => (
-                <div
-                  key={s.id}
-                  className="flex items-center gap-3 py-2.5 last:border-0"
-                  style={{ borderBottom: '1px solid #F6F0E8' }}
-                >
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
-                    style={{ background: '#F6F0E8', color: '#6B6B6B' }}
-                  >
-                    {s.name.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-sans text-sm font-medium truncate" style={{ color: '#43352C' }}>{s.name}</div>
-                    <div className="font-sans text-xs" style={{ color: '#9B9089' }}>{s.email}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeStaff(s.id, s.name)}
-                    className="p-1.5 rounded-xl transition-colors"
-                    style={{ color: '#f87171' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#fef2f2'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Cambiar contraseña */}
-        {!isSuperAdmin && (
-          <div
-            className="rounded-[24px] p-6"
-            style={{ background: 'white', border: '1px solid #E9DED1', boxShadow: '0 8px 30px rgba(67,53,44,0.04)' }}
-          >
-            <h2
-              className="font-sans text-sm font-semibold tracking-tight mb-5 pb-4 flex items-center gap-2"
-              style={{ color: '#43352C', borderBottom: '1px solid #F6F0E8' }}
-            >
-              <Key size={14} /> Cambiar contraseña
-            </h2>
-            <div className="space-y-3 max-w-sm">
-              <input
-                type="password" placeholder="Contraseña actual" value={pwForm.current}
-                onChange={e => setPwForm({ ...pwForm, current: e.target.value })}
-                className={sInputClass} style={sInputStyle}
-              />
-              <input
-                type="password" placeholder="Nueva contraseña" value={pwForm.next}
-                onChange={e => setPwForm({ ...pwForm, next: e.target.value })}
-                className={sInputClass} style={sInputStyle}
-              />
-              <input
-                type="password" placeholder="Confirmar nueva contraseña" value={pwForm.confirm}
-                onChange={e => setPwForm({ ...pwForm, confirm: e.target.value })}
-                className={sInputClass} style={sInputStyle}
-              />
-              <button
-                type="button"
-                onClick={handleChangePassword}
-                disabled={pwLoading || !pwForm.current || !pwForm.next || !pwForm.confirm}
-                className="px-5 py-2.5 rounded-xl font-sans font-semibold text-white text-sm hover:opacity-90 disabled:opacity-40 transition-all"
-                style={{ background: form.primaryColor }}
-              >
-                {pwLoading ? 'Cambiando…' : 'Cambiar contraseña'}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="mt-6 flex justify-end">

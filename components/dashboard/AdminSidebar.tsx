@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
-import { LayoutDashboard, Settings, Users, Gift, LogOut, Coffee, ExternalLink, ShieldCheck, BarChart3, Megaphone, Compass, Send, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Settings, Users, Gift, LogOut, Coffee, ExternalLink, ShieldCheck, BarChart3, Megaphone, Compass, Send, Menu, X, Share2, UserCog, CreditCard } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -31,7 +31,10 @@ export default function AdminSidebar({ cafe, userName, isSuperAdmin, isOwner, ne
     { href: `${base}/rewards`, label: 'Recompensas', icon: Gift },
     { href: `${base}/campaigns`, label: 'Campañas', icon: Megaphone },
     { href: `${base}/broadcasts`, label: 'Difusión', icon: Send },
+    { href: `${base}/compartir`, label: 'Compartir mi café', icon: Share2 },
     { href: `${base}/settings`, label: 'Configuración', icon: Settings },
+    { href: `${base}/equipo`, label: 'Equipo', icon: UserCog },
+    { href: `${base}/facturacion`, label: 'Plan y facturación', icon: CreditCard },
     ...(isOwner || isSuperAdmin
       ? [{ href: `${base}/getting-started`, label: 'Guía de inicio', icon: Compass, badge: showOnboardingBadge }]
       : []),

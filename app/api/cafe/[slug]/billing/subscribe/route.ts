@@ -76,7 +76,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     amount: price,
     payerEmail,
     startDate,
-    backUrl: `${baseUrl}/${cafe.slug}/admin/settings?billing=pending`,
+    backUrl: `${baseUrl}/${cafe.slug}/admin/facturacion?billing=pending`,
   })
   if (!result) return NextResponse.json({ error: 'No pudimos iniciar la suscripción. Intentá de nuevo.' }, { status: 502 })
 
